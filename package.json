@@ -8,7 +8,6 @@
     "start": "next start"
   },
   "dependencies": {
-    "@next/swc-win32-x64-msvc": "^16.3.1",
     "@supabase/ssr": "^0.12.4",
     "@supabase/storage-js": "^2.112.3",
     "@supabase/supabase-js": "^2.49.4",
