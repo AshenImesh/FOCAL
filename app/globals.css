@@ -599,6 +599,14 @@ tbody tr:hover td{background:var(--surface-2)}
 .stu-chart .sec-title .dot{width:7px;height:7px}
 .stu-empty{font-size:.8rem;color:var(--faint);padding:8px 0}
 .stu-detail .sub-table{margin:0;background:var(--surface)}
+.stu-detail .sub-table thead th{
+  padding:11px 16px;background:var(--surface-2);
+  color:var(--faint);font-size:.68rem;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;
+  border-bottom:1px solid var(--border);
+}
+.stu-detail .sub-table tbody td{padding:12px 16px;font-size:.86rem;white-space:nowrap}
+.stu-detail .sub-table tbody td:first-child{white-space:normal}
 .stu-edit-bar{
   display:flex;gap:8px;flex-wrap:wrap;align-items:center;
   background:var(--surface);border:1px solid var(--accent-line);border-radius:12px;padding:10px 12px;
