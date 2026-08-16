@@ -25,16 +25,6 @@ const NAV = [
   { href: "/board", label: "Board", icon: "trophy", active: "board" },
 ] as const;
 
-function initials(name: string | null | undefined) {
-  if (!name) return "?";
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join("");
-}
-
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient();
   let user = null;
@@ -95,9 +85,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </div>
             {user ? (
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <Link href="/dashboard" className="nav-user">
-                  <span className="ini">{initials(profile?.full_name)}</span>
-                  <span className="nm">{profile?.full_name?.split(" ")[0] || "Student"}</span>
+                <Link href={profile?.role === "admin" ? "/admin" : profile?.role === "teacher" ? "/teacher" : "/dashboard"} className="nav-user">
+                  <span className="ini">
+                    {user.user_metadata?.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={user.user_metadata.avatar_url} alt="" />
+                    ) : (
+                      <Icon name="user" size={15} />
+                    )}
+                  </span>
+                  <span className="nm">{profile?.full_name?.split(" ")[0] || user.user_metadata?.full_name?.split(" ")[0] || "Account"}</span>
                 </Link>
                 <form action={logoutUser}>
                   <button className="icon-btn" style={{ width: 34, height: 34 }} title="Log out">

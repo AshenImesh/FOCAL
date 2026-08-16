@@ -33,7 +33,10 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .maybeSingle();
   const profile = profileData as Profile | null;
-  if (!profile || !profile.grade) redirect("/register");
+  if (!profile) redirect("/register");
+  if (profile.role === "admin") redirect("/admin");
+  if (profile.role === "teacher") redirect("/teacher");
+  if (!profile.grade) redirect("/register");
 
   const approved = profile.status === "approved";
 

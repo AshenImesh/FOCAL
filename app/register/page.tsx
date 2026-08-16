@@ -18,6 +18,10 @@ export default async function RegisterPage() {
     .maybeSingle();
   const profile = data as Profile | null;
 
+  // staff already have their panels
+  if (profile?.role === "admin") redirect("/admin");
+  if (profile?.role === "teacher") redirect("/teacher");
+
   // already registered with a grade → straight to dashboard
   if (profile?.grade) redirect("/dashboard");
 
