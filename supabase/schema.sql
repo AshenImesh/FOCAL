@@ -85,6 +85,15 @@ create table if not exists public.notices (
   created_at timestamptz not null default now()
 );
 
+-- ── Contact requests (homepage "contact teacher" form) ──
+create table if not exists public.contact_requests (
+  id         bigint generated always as identity primary key,
+  name       text,
+  phone      text not null,
+  message    text not null,
+  created_at timestamptz not null default now()
+);
+
 -- ════════════════════════════════════════════════════════════════
 --  Row Level Security
 -- ════════════════════════════════════════════════════════════════
@@ -95,6 +104,7 @@ alter table public.quiz_questions enable row level security;
 alter table public.teachers       enable row level security;
 alter table public.notices        enable row level security;
 alter table public.user_requests  enable row level security;
+alter table public.contact_requests enable row level security;
 
 -- Helpers (security definer, so policies can use them safely)
 create or replace function public.is_admin()
@@ -228,6 +238,18 @@ create policy "user_requests_insert_own" on public.user_requests
 create policy "user_requests_update_admin" on public.user_requests
   for update using (is_admin());
 
+-- contact_requests:
+--  · anyone may submit (homepage form, no login needed)
+--  · only admins may read or delete
+create policy "contact_requests_insert" on public.contact_requests
+  for insert with check (true);
+
+create policy "contact_requests_select_admin" on public.contact_requests
+  for select using (is_admin());
+
+create policy "contact_requests_delete_admin" on public.contact_requests
+  for delete using (is_admin());
+
 -- ════════════════════════════════════════════════════════════════
 --  Indexes
 -- ════════════════════════════════════════════════════════════════
@@ -237,6 +259,7 @@ create index if not exists quiz_questions_grade_idx on public.quiz_questions(gra
 create index if not exists notices_active_idx      on public.notices(active);
 create index if not exists user_requests_user_idx  on public.user_requests(user_id);
 create index if not exists user_requests_status_idx on public.user_requests(status);
+create index if not exists contact_requests_created_idx on public.contact_requests(created_at);
 
 
 -- ════════════════════════════════════════════════════════════════

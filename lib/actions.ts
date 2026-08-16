@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseQuizMarkdown } from "@/lib/quiz-markdown";
-import type { Profile, UserRequest } from "@/lib/types";
+import type { Profile, UserRequest, ContactRequest } from "@/lib/types";
 
 /* ── helpers ─────────────────────────────────────────── */
 
@@ -456,6 +456,46 @@ export async function clearQuizGrade(formData: FormData) {
   const { error } = await admin.from("quiz_questions").delete().eq("grade", grade);
   if (error) return { error: error.message };
   revalidatePath("/quiz");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/* ── contact requests (homepage form) ────────────────── */
+
+export async function submitContactRequest(data: { name: string; phone: string; message: string }) {
+  const supabase = await createClient();
+  if (!supabase) return { error: "Not configured" };
+  const name = String(data.name || "").trim();
+  const phone = String(data.phone || "").trim();
+  const message = String(data.message || "").trim();
+  if (!phone || !message) return { error: "Phone number and message are required." };
+  if (phone.length < 7) return { error: "Enter a valid phone number." };
+  const { error } = await supabase
+    .from("contact_requests")
+    .insert({ name: name || null, phone, message });
+  if (error) return { error: error.message };
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+export async function listContactRequests() {
+  await requireAdmin();
+  const supabase = await createClient();
+  if (!supabase) return { error: "Not configured" };
+  const { data } = await supabase
+    .from("contact_requests")
+    .select("id, name, phone, message, created_at")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  return { requests: (data || []) as ContactRequest[] };
+}
+
+export async function deleteContactRequest(id: number) {
+  await requireAdmin();
+  const supabase = await createClient();
+  if (!supabase) return { error: "Not configured" };
+  const { error } = await supabase.from("contact_requests").delete().eq("id", id);
+  if (error) return { error: error.message };
   revalidatePath("/admin");
   return { ok: true };
 }

@@ -20,18 +20,21 @@ import {
   removeAdminEmail,
   listUserRequests,
   resolveUserRequest,
+  listContactRequests,
+  deleteContactRequest,
 } from "@/lib/actions";
 import { Icon } from "@/components/icons";
 import LogoutButton from "@/components/LogoutButton";
 import { buildQuizTemplate } from "@/lib/quiz-markdown";
-import type { Notice, Paper, Profile, QuizScore, Teacher, UserRequest } from "@/lib/types";
+import type { ContactRequest, Notice, Paper, Profile, QuizScore, Teacher, UserRequest } from "@/lib/types";
 
-type Tab = "overview" | "requests" | "appeals" | "students" | "teachers" | "quizbank" | "admins" | "notices";
+type Tab = "overview" | "requests" | "appeals" | "contacts" | "students" | "teachers" | "quizbank" | "admins" | "notices";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "requests", label: "Registration requests" },
   { id: "appeals", label: "User changes" },
+  { id: "contacts", label: "Contact requests" },
   { id: "students", label: "Students" },
   { id: "teachers", label: "Teachers" },
   { id: "admins", label: "Admins" },
@@ -84,6 +87,7 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
   const [aForm, setAForm] = useState("");
   const [appeals, setAppeals] = useState<UserRequest[]>([]);
   const [appealNames, setAppealNames] = useState<Record<string, string>>({});
+  const [contacts, setContacts] = useState<ContactRequest[]>([]);
 
   const flash = (m: string, isErr = false) => {
     setMsg(isErr ? "" : m);
@@ -270,6 +274,19 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
     router.refresh();
   }
 
+  async function doLoadContacts() {
+    const res = await listContactRequests();
+    if (res && "requests" in res && res.requests) setContacts(res.requests);
+  }
+
+  async function doDeleteContact(id: number) {
+    if (!confirm("Delete this contact request?")) return;
+    const res = await deleteContactRequest(id);
+    if (res && "error" in res && res.error) flash(res.error, true);
+    else flash("Contact request deleted.");
+    doLoadContacts();
+  }
+
   async function doAddAdmin(e: React.FormEvent) {
     e.preventDefault();
     const fd = new FormData();
@@ -342,6 +359,7 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
               setTab(t.id);
               if (t.id === "admins") doLoadAdmins();
               if (t.id === "appeals") doLoadAppeals();
+              if (t.id === "contacts") doLoadContacts();
             }}
           >
             {t.label}
@@ -491,6 +509,47 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
                         {r.status === "approved" ? "Applied" : "Declined"}
                       </span>
                     )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {tab === "contacts" && (
+            <div className="card admin-sec" style={{ padding: "14px 20px" }}>
+              <div className="sec-title" style={{ marginBottom: 6 }}>
+                <span className="dot" /> Teacher contact requests ({contacts.length})
+              </div>
+              {contacts.length === 0 ? (
+                <p style={{ fontSize: ".86rem", color: "var(--faint)", padding: "10px 0" }}>
+                  No contact requests yet. Messages sent from the homepage&apos;s "Contact teacher"
+                  form appear here.
+                </p>
+              ) : (
+                contacts.map((c) => (
+                  <div className="list-row" key={c.id}>
+                    <div className="who">
+                      <div className="mini">{initials(c.name || "?")}</div>
+                      <div>
+                        <div className="nm">
+                          {c.name || "Anonymous"}
+                          <a className="sub" href={"tel:" + c.phone} style={{ display: "block", color: "var(--accent)", fontWeight: 600 }}>
+                            {c.phone}
+                          </a>
+                        </div>
+                        <div className="sub" style={{ whiteSpace: "pre-wrap", maxWidth: 420 }}>
+                          {c.message}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="acts">
+                      <span className="sub" style={{ marginRight: 10 }}>
+                        {new Date(c.created_at).toLocaleDateString("en-GB")}
+                      </span>
+                      <button className="icon-btn" title="Delete" onClick={() => doDeleteContact(c.id)}>
+                        <Icon name="trash" size={15} />
+                      </button>
+                    </div>
                   </div>
                 ))
               )}

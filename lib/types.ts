@@ -59,6 +59,14 @@ export interface UserRequest {
   resolved_at: string | null;
 }
 
+export interface ContactRequest {
+  id: number;
+  name: string | null;
+  phone: string;
+  message: string;
+  created_at: string;
+}
+
 export interface Teacher {
   id: string;
   full_name: string;
