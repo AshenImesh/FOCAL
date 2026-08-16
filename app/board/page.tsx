@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Icon } from "@/components/icons";
 import type { Paper, QuizScore, Profile } from "@/lib/types";
@@ -12,17 +13,27 @@ const MEDALS = ["🥇", "🥈", "🥉"];
 type Row = { name: string; grade: number; val: number; sub: string };
 
 export default function BoardPage() {
+  const router = useRouter();
   const [tab, setTab] = useState<"quiz" | "paper">("quiz");
   const [grade, setGrade] = useState("all");
   const [quizRows, setQuizRows] = useState<Row[]>([]);
   const [paperRows, setPaperRows] = useState<Row[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [authed, setAuthed] = useState<boolean | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
     if (!supabase) return;
 
     const fetchAll = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+      setAuthed(true);
       const [q, p, profiles] = await Promise.all([
         supabase.from("quiz_scores").select("*").limit(500),
         supabase.from("papers").select("*").limit(500),
@@ -151,6 +162,8 @@ export default function BoardPage() {
         </Link>
       </div>
     );
+
+  if (authed === null) return null;
 
   return (
     <div className="board-wrap">

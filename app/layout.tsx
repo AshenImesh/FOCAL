@@ -78,7 +78,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <div className="nav-links">
               <NavLinks
                 items={[
-                  ...NAV,
+                  ...NAV.filter((n) => user || n.href !== "/board"),
                   ...(profile?.role === "admin"
                     ? [{ href: "/admin", label: "Admin", icon: "user", active: "admin" }]
                     : []),
@@ -126,7 +126,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 <h4>Explore</h4>
                 <Link href="/dashboard">Results</Link>
                 <Link href="/quiz">Quizzes</Link>
-                <Link href="/board">Leaderboard</Link>
+                {user && <Link href="/board">Leaderboard</Link>}
                 <Link href="/login">Register / Login</Link>
               </div>
               <div className="col">
@@ -149,7 +149,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
         <BottomNav
           items={[
-            ...NAV,
+            ...NAV.filter((n) => user || n.href !== "/board"),
             ...(profile?.role === "admin"
               ? [{ href: "/admin", label: "Admin", icon: "user", active: "admin" }]
               : []),
