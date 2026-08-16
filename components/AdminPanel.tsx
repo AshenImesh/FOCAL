@@ -15,21 +15,22 @@ import {
   deleteNotice,
   uploadQuizBank,
   clearQuizGrade,
-  uploadPaperResults,
   updatePaper,
   deletePaper,
+  savePaperResult,
   listAdmins,
   addAdminEmail,
   removeAdminEmail,
+  listStudentEmails,
   listUserRequests,
   resolveUserRequest,
   listContactRequests,
   deleteContactRequest,
 } from "@/lib/actions";
 import { Icon } from "@/components/icons";
+import { PaperTrendChart, QuizTrendChart } from "@/components/StudentCharts";
 import LogoutButton from "@/components/LogoutButton";
 import { buildQuizTemplate } from "@/lib/quiz-markdown";
-import { buildResultsTemplate } from "@/lib/results-markdown";
 import type { ContactRequest, Notice, Paper, Profile, QuizScore, Teacher, UserRequest } from "@/lib/types";
 
 type Tab = "overview" | "requests" | "appeals" | "contacts" | "students" | "teachers" | "quizbank" | "results" | "admins" | "notices";
@@ -65,6 +66,9 @@ function genPassword() {
   return out;
 }
 
+const pctBadge = (pct: number) =>
+  pct >= 75 ? "badge badge-a" : pct >= 60 ? "badge badge-b" : pct >= 40 ? "badge badge-c" : "badge badge-d";
+
 export default function AdminPanel({ profile }: { profile: Profile }) {
   const router = useRouter();
   const supabase = createClient();
@@ -93,8 +97,15 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
   const [appeals, setAppeals] = useState<UserRequest[]>([]);
   const [appealNames, setAppealNames] = useState<Record<string, string>>({});
   const [contacts, setContacts] = useState<ContactRequest[]>([]);
-  const [rMarkdown, setRMarkdown] = useState(buildResultsTemplate());
+  const [studentEmails, setStudentEmails] = useState<Record<string, string>>({});
   const [rGrade, setRGrade] = useState("all");
+  const [rSel, setRSel] = useState<string | null>(null);
+  const [rOpen, setROpen] = useState(false);
+  const [rSearch, setRSearch] = useState("");
+  const [rPaper, setRPaper] = useState("");
+  const [rMarks, setRMarks] = useState("");
+  const [rTotal, setRTotal] = useState("100");
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [pEdit, setPEdit] = useState<string | null>(null);
   const [pEditForm, setPEditForm] = useState({ paper_name: "", marks: "", total: "", date: "" });
 
@@ -137,6 +148,8 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
       setAppealNames(names);
     }
     if (cr && "requests" in cr && cr.requests) setContacts(cr.requests);
+    const em = await listStudentEmails();
+    if (em && "emails" in em && em.emails) setStudentEmails(em.emails);
     setLoaded(true);
   }, [supabase]);
 
@@ -306,25 +319,25 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
     doLoadContacts();
   }
 
-  async function doUploadResults(e: React.FormEvent) {
+  async function doSaveResult(e: React.FormEvent) {
     e.preventDefault();
+    if (!rSel) return;
     const fd = new FormData();
-    fd.set("text", rMarkdown);
-    const res = await uploadPaperResults(fd);
+    fd.set("student_id", rSel);
+    fd.set("paper_name", rPaper);
+    fd.set("marks", rMarks);
+    fd.set("total", rTotal);
+    const res = await savePaperResult(fd);
     if (res && "error" in res && res.error) flash(res.error, true);
-    else if ("inserted" in res) {
-      const skipped = (res.skipped || []).length;
+    else {
+      const stu = students.find((s) => s.id === rSel);
       flash(
-        `Uploaded ${res.inserted} new + updated ${res.updated} result${skipped ? `, skipped ${skipped} line(s)` : ""}.`
+        (res && "updated" in res && res.updated ? "Updated" : "Added") +
+          ` result for ${stu?.full_name || "student"} — ${rPaper.trim()} (${rMarks}/${rTotal}).`
       );
-      if (skipped && res.skipped && res.skipped.length) {
-        setErr(
-          res.skipped
-            .map((s) => (s.line ? `Line ${s.line}: ${s.reason}` : s.reason))
-            .join(" · ")
-        );
-      }
-      setRMarkdown(buildResultsTemplate());
+      setRSel(null);
+      setRSearch("");
+      setRMarks("");
     }
     load();
     router.refresh();
@@ -385,6 +398,8 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
     papers: papers.length,
     quizzes: scores.length,
     teachers: teachers.length,
+    appeals: appeals.filter((r) => r.status === "pending").length,
+    contacts: contacts.length,
   };
 
   const statusPill = (s: string) =>
@@ -413,6 +428,17 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
       const stu = students.find((s) => s.id === p.student_id);
       return String(stu?.grade) === rGrade;
     });
+
+  const rOptions = approved
+    .filter((s) => {
+      const q = rSearch.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        (s.full_name || "").toLowerCase().includes(q) ||
+        (s.phone || "").toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
 
   return (
     <div className="admin-wrap">
@@ -472,6 +498,14 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
               <div className="kpi">
                 <div className="n warn">{counts.pending}</div>
                 <div className="l">Pending approval</div>
+              </div>
+              <div className="kpi">
+                <div className="n warn">{counts.appeals}</div>
+                <div className="l">Pending changes</div>
+              </div>
+              <div className="kpi">
+                <div className="n warn">{counts.contacts}</div>
+                <div className="l">Contact messages</div>
               </div>
               <div className="kpi">
                 <div className="n accent">{counts.papers}</div>
@@ -652,9 +686,31 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
                   const avg = sPapers.length
                     ? Math.round((sPapers.reduce((a, p) => a + p.marks, 0) / sPapers.reduce((a, p) => a + p.total, 0)) * 100)
                     : null;
+                  const pSorted = [...sPapers].sort((a, b) => a.created_at.localeCompare(b.created_at));
+                  const qSorted = [...sScores].sort((a, b) => a.created_at.localeCompare(b.created_at));
+                  const best = pSorted.length
+                    ? pSorted.reduce((a, b) =>
+                        Math.round((b.marks / b.total) * 100) > Math.round((a.marks / a.total) * 100) ? b : a
+                      )
+                    : null;
+                  const paperChart = pSorted.map((p) => ({
+                    label: p.paper_name.length > 15 ? p.paper_name.slice(0, 15) + "…" : p.paper_name,
+                    pct: Math.round((p.marks / p.total) * 100),
+                  }));
+                  const quizChart = qSorted.map((q) => ({
+                    label: new Date(q.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+                    pct: Math.round((q.score / q.total) * 100),
+                  }));
                   return (
-                    <div className="list-row" key={s.id} style={{ alignItems: "flex-start" }}>
-                      <div className="who">
+                    <div className="list-row stu-row" key={s.id} style={{ alignItems: "flex-start" }}>
+                      <div className="who" style={{ flex: 1 }}>
+                        <button
+                          className={"expand-btn" + (expanded === s.id ? " open" : "")}
+                          title={expanded === s.id ? "Collapse" : "Expand"}
+                          onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+                        >
+                          <Icon name="chev" size={13} />
+                        </button>
                         <div className="mini">{initials(s.full_name || "?")}</div>
                         <div style={{ flex: 1 }}>
                           {editing === s.id ? (
@@ -734,6 +790,212 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
                           <Icon name="trash" size={14} />
                         </button>
                       </div>
+
+                      {expanded === s.id && (
+                        <div className="stu-detail">
+                          <div className="stu-detail-grid">
+                            <div className="stu-box">
+                              <div className="sec-title">
+                                <span className="dot" /> Student details
+                              </div>
+                              <div className="kv">
+                                <span>Full name</span>
+                                <b>{s.full_name}</b>
+                                <span>Grade</span>
+                                <b>{s.grade}</b>
+                                <span>Phone</span>
+                                <b>{s.phone || "—"}</b>
+                                <span>Email</span>
+                                <b>{studentEmails[s.id] || "—"}</b>
+                                <span>Joined</span>
+                                <b>{new Date(s.created_at).toLocaleDateString("en-GB")}</b>
+                                <span>Status</span>
+                                <b>{statusPill(s.status)}</b>
+                                <span>Quiz attempts</span>
+                                <b>{sScores.length}</b>
+                              </div>
+                            </div>
+                            <div className="stu-box">
+                              <div className="sec-title">
+                                <span className="dot" /> Paper stats
+                              </div>
+                              <div className="kv">
+                                <span>Papers</span>
+                                <b>{sPapers.length}</b>
+                                <span>Average</span>
+                                <b>{avg == null ? "—" : `${avg}%`}</b>
+                                <span>Best paper</span>
+                                <b>{best ? `${best.paper_name} (${Math.round((best.marks / best.total) * 100)}%)` : "—"}</b>
+                                <span>Latest quiz</span>
+                                <b>
+                                  {qSorted.length
+                                    ? `${Math.round((qSorted[qSorted.length - 1].score / qSorted[qSorted.length - 1].total) * 100)}%`
+                                    : "—"}
+                                </b>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="stu-charts">
+                            <div className="stu-chart">
+                              <div className="sec-title">
+                                <span className="dot" /> Paper performance
+                              </div>
+                              {paperChart.length ? (
+                                <PaperTrendChart data={paperChart} predicted={null} />
+                              ) : (
+                                <p className="stu-empty">No papers on record yet.</p>
+                              )}
+                            </div>
+                            <div className="stu-chart">
+                              <div className="sec-title">
+                                <span className="dot" /> Quiz performance
+                              </div>
+                              {quizChart.length ? (
+                                <QuizTrendChart data={quizChart} />
+                              ) : (
+                                <p className="stu-empty">No quiz attempts yet.</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="sub-table">
+                            <table className="data-table">
+                              <thead>
+                                <tr>
+                                  <th>Paper</th>
+                                  <th>Date</th>
+                                  <th>Score</th>
+                                  <th>%</th>
+                                  <th></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {pSorted.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={5} className="stu-empty" style={{ textAlign: "center", padding: 12 }}>
+                                      No papers on record yet.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  pSorted.map((p) => (
+                                    <tr key={p.id}>
+                                      <td>{p.paper_name}</td>
+                                      <td>{p.date || "—"}</td>
+                                      <td>
+                                        <b>{p.marks}/{p.total}</b>
+                                      </td>
+                                      <td>
+                                        <span className={pctBadge(Math.round((p.marks / p.total) * 100))}>
+                                          {Math.round((p.marks / p.total) * 100)}%
+                                        </span>
+                                      </td>
+                                      <td>
+                                        <div className="acts" style={{ justifyContent: "flex-end" }}>
+                                          <button
+                                            className="icon-btn ok"
+                                            title="Edit result"
+                                            onClick={() => {
+                                              setPEdit(p.id);
+                                              setPEditForm({
+                                                paper_name: p.paper_name,
+                                                marks: String(p.marks),
+                                                total: String(p.total),
+                                                date: p.date || "",
+                                              });
+                                            }}
+                                          >
+                                            <Icon name="edit" size={13} />
+                                          </button>
+                                          <button className="icon-btn" title="Delete result" onClick={() => doDeletePaper(p.id)}>
+                                            <Icon name="trash" size={13} />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                          {pEdit && (
+                            <div className="stu-edit-bar">
+                              <input
+                                className="input"
+                                value={pEditForm.paper_name}
+                                onChange={(e) => setPEditForm({ ...pEditForm, paper_name: e.target.value })}
+                                placeholder="Paper name"
+                                style={{ padding: 8, fontSize: ".85rem" }}
+                              />
+                              <input
+                                className="input"
+                                value={pEditForm.marks}
+                                onChange={(e) => setPEditForm({ ...pEditForm, marks: e.target.value })}
+                                placeholder="Marks"
+                                type="number"
+                                style={{ padding: 8, fontSize: ".85rem", width: 90 }}
+                              />
+                              <input
+                                className="input"
+                                value={pEditForm.total}
+                                onChange={(e) => setPEditForm({ ...pEditForm, total: e.target.value })}
+                                placeholder="Total"
+                                type="number"
+                                style={{ padding: 8, fontSize: ".85rem", width: 90 }}
+                              />
+                              <input
+                                className="input"
+                                value={pEditForm.date}
+                                onChange={(e) => setPEditForm({ ...pEditForm, date: e.target.value })}
+                                placeholder="Date (optional)"
+                                style={{ padding: 8, fontSize: ".85rem" }}
+                              />
+                              <button className="btn btn-primary btn-sm" onClick={() => doUpdatePaper(pEdit)}>
+                                Save
+                              </button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => setPEdit(null)}>
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                          <div className="sub-table">
+                            <table className="data-table">
+                              <thead>
+                                <tr>
+                                  <th>Quiz</th>
+                                  <th>Date</th>
+                                  <th>Score</th>
+                                  <th>%</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {qSorted.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={4} className="stu-empty" style={{ textAlign: "center", padding: 12 }}>
+                                      No quiz attempts yet.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  qSorted.map((q) => (
+                                    <tr key={q.id}>
+                                      <td>Grade {q.grade} quiz</td>
+                                      <td>{new Date(q.created_at).toLocaleDateString("en-GB")}</td>
+                                      <td>
+                                        <b>{q.score}/{q.total}</b>
+                                      </td>
+                                      <td>
+                                        <span className={pctBadge(Math.round((q.score / q.total) * 100))}>
+                                          {Math.round((q.score / q.total) * 100)}%
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -941,27 +1203,118 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
             <>
               <div className="card admin-sec" style={{ padding: 26 }}>
                 <div className="sec-title">
-                  <span className="dot" /> Bulk upload paper results
+                  <span className="dot" /> Add a paper result
                 </div>
                 <p style={{ fontSize: ".84rem", color: "var(--muted)", marginBottom: 16 }}>
-                  Paste one result per line: <b>Grade, Student name, Paper name, Marks, Total</b>.
-                  Total is optional (defaults to 100). Lines starting with <b>#</b> are ignored.
-                  Re-uploading a paper for the same student simply updates it — history is never
-                  wiped, so it is safe to upload term by term.
+                  Pick an <b>approved</b> student, then type the paper name and their marks. The
+                  paper name and total stay while you move from student to student — perfect for
+                  entering one paper across a whole class. Re-entering the same paper for the same
+                  student updates their result instead of duplicating it.
                 </p>
-                <form onSubmit={doUploadResults}>
+                <form onSubmit={doSaveResult}>
                   <div className="field">
-                    <label>Results (paste below)</label>
-                    <textarea
+                    <label>Student (approved only)</label>
+                    {rSel ? (
+                      <div className="sel-tag">
+                        {(() => {
+                          const stu = students.find((s) => s.id === rSel);
+                          return (
+                            <>
+                              <div className="mini">{initials(stu?.full_name || "?")}</div>
+                              <div style={{ flex: 1 }}>
+                                <div className="nm">{stu?.full_name}</div>
+                                <div className="sub">
+                                  Grade {stu?.grade} · {stu?.phone || "no phone"}
+                                </div>
+                              </div>
+                              <button type="button" className="icon-btn ok" title="Change student" onClick={() => setRSel(null)}>
+                                <Icon name="close" size={14} />
+                              </button>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : (
+                      <div className="sel-box">
+                        <div style={{ position: "relative" }}>
+                          <input
+                            className="input"
+                            value={rSearch}
+                            onChange={(e) => setRSearch(e.target.value)}
+                            onFocus={() => setROpen(true)}
+                            onBlur={() => setTimeout(() => setROpen(false), 150)}
+                            placeholder="Search by name or phone…"
+                          />
+                          {rOpen && (
+                            <div className="sel-list">
+                              {rOptions.length === 0 ? (
+                                <div className="sel-empty">
+                                  No approved students match "{rSearch}". They must register and be
+                                  approved first.
+                                </div>
+                              ) : (
+                                rOptions.slice(0, 8).map((s) => (
+                                  <button
+                                    type="button"
+                                    key={s.id}
+                                    className="sel-opt"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setRSel(s.id);
+                                      setROpen(false);
+                                      setRSearch("");
+                                    }}
+                                  >
+                                    <div className="mini">{initials(s.full_name || "?")}</div>
+                                    <div>
+                                      <div className="nm">{s.full_name}</div>
+                                      <div className="sub">
+                                        Grade {s.grade} · {s.phone || "no phone"}
+                                      </div>
+                                    </div>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="field">
+                    <label>Paper name</label>
+                    <input
                       className="input"
-                      value={rMarkdown}
-                      onChange={(e) => setRMarkdown(e.target.value)}
-                      style={{ minHeight: 220, fontFamily: "var(--font-b)" }}
-                      required
+                      value={rPaper}
+                      onChange={(e) => setRPaper(e.target.value)}
+                      placeholder="e.g. Paper 1 – Term 1 2026"
                     />
                   </div>
-                  <button className="btn btn-primary">
-                    <Icon name="plus" size={16} /> Upload results
+                  <div className="grid-2" style={{ gap: 12 }}>
+                    <div className="field">
+                      <label>Marks</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={0}
+                        value={rMarks}
+                        onChange={(e) => setRMarks(e.target.value)}
+                        placeholder="e.g. 78"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Total (defaults to 100)</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={1}
+                        value={rTotal}
+                        onChange={(e) => setRTotal(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <button className="btn btn-primary" disabled={!rSel}>
+                    <Icon name="plus" size={16} /> Add result
                   </button>
                 </form>
               </div>
@@ -983,7 +1336,7 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
                 </div>
                 {sortedPapers.length === 0 ? (
                   <p style={{ fontSize: ".86rem", color: "var(--faint)", padding: "10px 0" }}>
-                    No results in this filter. Use the form above to upload marks.
+                    No results in this filter. Use the form above to add marks.
                   </p>
                 ) : (
                   sortedPapers.map((p) => {

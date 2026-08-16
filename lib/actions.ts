@@ -364,6 +364,50 @@ export async function uploadPaperResults(formData: FormData) {
   return { ok: true, inserted: toInsert.length, updated: toUpdate.length, skipped };
 }
 
+export async function savePaperResult(formData: FormData) {
+  await requireStaff();
+  const supabase = await createClient();
+  if (!supabase) return { error: "Not configured" };
+  const student_id = String(formData.get("student_id") || "");
+  const paper_name = String(formData.get("paper_name") || "").trim();
+  const marks = Number(formData.get("marks"));
+  const total = Number(formData.get("total") || 100);
+  if (!student_id || !paper_name || !marks) return { error: "Fill all fields." };
+  if (marks > total) return { error: "Marks cannot exceed the total." };
+
+  const { data: stu } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", student_id)
+    .eq("role", "student")
+    .eq("status", "approved")
+    .maybeSingle();
+  if (!stu) return { error: "Only approved students can receive results." };
+
+  const { data: existing } = await supabase
+    .from("papers")
+    .select("id")
+    .eq("student_id", student_id)
+    .ilike("paper_name", paper_name)
+    .maybeSingle();
+
+  let error = null;
+  if (existing) {
+    const r = await supabase.from("papers").update({ marks, total }).eq("id", existing.id);
+    error = r.error;
+  } else {
+    const r = await supabase.from("papers").insert({ student_id, paper_name, marks, total, date: null });
+    error = r.error;
+  }
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/board");
+  revalidatePath("/teacher");
+  revalidatePath("/admin");
+  return { ok: true, updated: !!existing };
+}
+
 /* ── admin: students ─────────────────────────────────── */
 
 export async function setStudentStatus(id: string, status: string) {
@@ -698,6 +742,18 @@ export async function listAdmins() {
     .select("id, email, created_at")
     .order("created_at");
   return { admins: (data || []) as { id: string; email: string; created_at: string }[] };
+}
+
+export async function listStudentEmails() {
+  await requireAdmin();
+  const admin = createAdminClient();
+  if (!admin) return { emails: {} };
+  const { data } = await admin.auth.admin.listUsers({ perPage: 1000 });
+  const emails: Record<string, string> = {};
+  (data?.users || []).forEach((u) => {
+    emails[u.id] = u.email || "";
+  });
+  return { emails };
 }
 
 export async function addAdminEmail(formData: FormData) {
