@@ -40,16 +40,18 @@ export default async function DashboardPage() {
 
   const approved = profile.status === "approved";
 
-  const [{ data: papersData }, { data: scoresData }] = await Promise.all([
+  const [{ data: papersData }, { data: scoresData }, { data: qCountData }] = await Promise.all([
     approved
       ? supabase.from("papers").select("*").eq("student_id", user.id).order("created_at")
       : Promise.resolve({ data: [] as Paper[] }),
     supabase.from("quiz_scores").select("*").eq("student_id", user.id).order("created_at"),
+    supabase.from("quiz_questions").select("id").eq("grade", profile.grade),
   ]);
 
   const papers = paperRows(papersData || []);
   const scores = (scoresData || []) as QuizScore[];
   const pred = predict(papers);
+  const quizPacks = Math.floor((qCountData || []).length / 10);
 
   const totalMarks = papers.reduce((s, p) => s + p.marks, 0);
   const totalMax = papers.reduce((s, p) => s + p.total, 0);
@@ -89,6 +91,27 @@ export default async function DashboardPage() {
         <p>
           Grade {profile.grade} · Science · FOCAL Classes
         </p>
+      </div>
+
+      <div className="card quiz-cta">
+        <div className="quiz-cta-ic">
+          <Icon name="bolt" size={22} />
+        </div>
+        <div className="quiz-cta-tx">
+          <div className="quiz-cta-t">Quizzes for Grade {profile.grade}</div>
+          <div className="quiz-cta-s">
+            {quizPacks > 0
+              ? `${quizPacks} quiz pack${quizPacks !== 1 ? "s" : ""} released${
+                  scores.length > 0 ? " · you've taken " + scores.length + " so far" : " · take your first one"
+                } — new questions drop regularly.`
+              : "The teacher hasn't released quizzes for your grade yet — check back soon."}
+          </div>
+        </div>
+        {quizPacks > 0 && (
+          <Link className="btn btn-primary quiz-cta-btn" href="/quiz">
+            <Icon name="bolt" size={16} /> Take a quiz
+          </Link>
+        )}
       </div>
 
       {!approved && (

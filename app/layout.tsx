@@ -90,7 +90,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </div>
             {user ? (
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <Link href={profile?.role === "admin" ? "/admin" : profile?.role === "teacher" ? "/teacher" : "/dashboard"} className="nav-user">
+                <Link href="/profile" className="nav-user">
                   <span className="ini">
                     {user.user_metadata?.avatar_url ? (
                       // eslint-disable-next-line @next/next/no-img-element

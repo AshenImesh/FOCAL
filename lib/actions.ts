@@ -178,6 +178,26 @@ export async function completeRegistration(formData: FormData) {
   redirect("/dashboard");
 }
 
+/* ── profile ─────────────────────────────────────────── */
+
+export async function updateProfile(data: { full_name: string; phone: string }) {
+  const profile = await requireProfile();
+  const supabase = await createClient();
+  if (!supabase) return { error: "Not configured" };
+  const full_name = String(data.full_name || "").trim();
+  if (!full_name) return { error: "Name can't be empty." };
+  const phone = String(data.phone || "").trim();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ full_name, phone: phone || null })
+    .eq("id", profile.id);
+  if (error) return { error: error.message };
+  revalidatePath("/profile");
+  revalidatePath("/dashboard");
+  revalidatePath("/");
+  return { ok: true };
+}
+
 /* ── quiz ────────────────────────────────────────────── */
 
 export async function submitQuiz(data: {

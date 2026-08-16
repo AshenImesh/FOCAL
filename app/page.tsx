@@ -2,10 +2,19 @@ import Link from "next/link";
 import { Icon } from "@/components/icons";
 import TeacherPhoto from "@/components/TeacherPhoto";
 import HomeLeaderboard from "@/components/HomeLeaderboard";
+import { createClient } from "@/lib/supabase/server";
 
 const GRADES = ["6", "7", "8", "9", "10", "11"];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = await createClient();
+  let user = null;
+  if (supabase) {
+    const {
+      data: { user: u },
+    } = await supabase.auth.getUser();
+    user = u;
+  }
   return (
     <>
       <section className="hero">
@@ -24,10 +33,10 @@ export default function HomePage() {
               where you stand. Simple, clean, no clutter.
             </p>
             <div className="hero-cta">
-              <Link className="btn btn-primary" href="/login">
-                <Icon name="search" size={17} /> Log in to see results
+              <Link className="btn btn-primary" href={user ? "/dashboard" : "/login"}>
+                <Icon name="search" size={17} /> {user ? "My dashboard" : "Log in to see results"}
               </Link>
-              <Link className="btn btn-ghost" href="/login">
+              <Link className="btn btn-ghost" href="/quiz">
                 <Icon name="bolt" size={17} /> Take a quiz
               </Link>
             </div>
@@ -125,21 +134,23 @@ export default function HomePage() {
 
       <HomeLeaderboard />
 
-      <section className="section-tight">
-        <div className="sec-head">
-          <span className="eyebrow">Grades we cover</span>
-          <h2>Pick your grade, start learning</h2>
-          <p>One class, six grades — from the basics to the big exams.</p>
-        </div>
-        <div className="grade-strip">
-          {GRADES.map((g) => (
-            <Link key={g} className="grade-pill" href="/login">
-              Grade {g}
-              <small>Science</small>
-            </Link>
-          ))}
-        </div>
-      </section>
+      {!user && (
+        <section className="section-tight">
+          <div className="sec-head">
+            <span className="eyebrow">Grades we cover</span>
+            <h2>Pick your grade, start learning</h2>
+            <p>One class, six grades — from the basics to the big exams.</p>
+          </div>
+          <div className="grade-strip">
+            {GRADES.map((g) => (
+              <Link key={g} className="grade-pill" href="/login">
+                Grade {g}
+                <small>Science</small>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </>
   );
 }
