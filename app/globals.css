@@ -187,9 +187,9 @@ textarea.input{resize:vertical;min-height:100px;font-family:var(--font-b);font-s
 .hero::after{
   content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
   background:
-    radial-gradient(95% 85% at 88% 45%,rgba(124,58,237,.20),transparent 62%),
-    radial-gradient(70% 65% at 100% 25%,rgba(79,70,229,.15),transparent 60%);
-  filter:blur(26px);
+    radial-gradient(100% 100% at 92% 40%,rgba(124,58,237,.32),transparent 62%),
+    radial-gradient(90% 90% at 100% 88%,rgba(79,70,229,.24),transparent 58%),
+    radial-gradient(60% 70% at 78% 0%,rgba(124,58,237,.16),transparent 62%);
 }
 .hero-visual{position:relative;min-height:460px;display:flex;align-items:flex-end;justify-content:center}
 .photo-card{
@@ -206,8 +206,8 @@ textarea.input{resize:vertical;min-height:100px;font-family:var(--font-b);font-s
   transform:translateY(3px);
 }
 .photo-frame .ph-blob{
-  position:absolute;width:300px;height:300px;border-radius:50%;
-  background:radial-gradient(circle,rgba(124,58,237,.30),transparent 70%);
+  position:absolute;width:320px;height:320px;border-radius:50%;
+  background:radial-gradient(circle,rgba(124,58,237,.32),transparent 70%);
   top:18px;left:50%;transform:translateX(-50%);pointer-events:none;
 }
 .photo-frame::before{
