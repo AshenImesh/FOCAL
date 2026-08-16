@@ -1,4 +1,4 @@
-import { Icon } from "@/components/icons";
+import { Icon, WhatsAppIcon } from "@/components/icons";
 import ContactTeacher from "@/components/ContactTeacher";
 
 const SCHEDULE = [
@@ -103,8 +103,13 @@ export default function ClassCards() {
           </p>
 
           <div className="cc-phone">
-            <Icon name="user" size={16} />
-            <a href="tel:+94715834715">071 583 4715</a>
+            <a href="tel:+94758660367" title="Call">
+              <Icon name="phone" size={16} />
+            </a>
+            <a href="https://wa.me/94758660367" title="WhatsApp" target="_blank" rel="noopener noreferrer">
+              <WhatsAppIcon size={16} />
+            </a>
+            <a href="tel:+94758660367">075 866 0367</a>
           </div>
 
           <ContactTeacher />
