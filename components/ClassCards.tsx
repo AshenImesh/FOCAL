@@ -85,7 +85,7 @@ export default function ClassCards() {
               <span className="sub-tag">O/L</span>
               <span>
                 <b>Science</b>
-                <small>English medium</small>
+                <small>English / Sinhala medium</small>
               </span>
             </div>
             <div className="sub-row">
