@@ -23,7 +23,7 @@ export default async function HomePage() {
         <div className="blob b1" />
         <div className="blob b2" />
         <div className="wrap hero-grid">
-          <div>
+          <div className="hero-copy">
             <span className="eyebrow hero-eyebrow">Grades 6 – 11 · Science · English Medium</span>
             <h1>
               Science,<br />
