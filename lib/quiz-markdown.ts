@@ -119,3 +119,103 @@ export function buildQuizTemplate(): string {
   ];
   return lines.join("\n");
 }
+
+/** Turns parsed questions back into the markdown format (for export). */
+export function questionsToMarkdown(questions: ParsedQuestion[]): string {
+  return questions
+    .map((q, i) => {
+      const opts = q.options.map((o, j) => `${String.fromCharCode(65 + j)}. ${o}`).join("\n");
+      const ans = `Answer: ${String.fromCharCode(65 + q.answer)}`;
+      const fb = q.feedback ? `\nFeedback: ${q.feedback}` : "";
+      return `${i + 1}. ${q.question}\n${opts}\n${ans}${fb}`;
+    })
+    .join("\n\n");
+}
+
+/* ── HTML import ────────────────────────────────────── */
+
+const htmlDecode = (s: string) =>
+  s
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&apos;/g, "'");
+
+const htmlText = (s: string) => htmlDecode(s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+
+const cleanHtml = (html: string) =>
+  html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)>/gi, "\n");
+
+function letterIndex(t: string): number | null {
+  const m = /^\s*\(?([A-Da-d])\)?[\s.:\-–]*/.exec(t);
+  if (!m) return null;
+  return m[1].toUpperCase().charCodeAt(0) - 65;
+}
+
+/**
+ * Best-effort parser for HTML quiz exports. Looks for blocks whose class
+ * contains "question", options in <li> or elements whose class contains
+ * "option"/"choice", and the correct answer in elements whose class contains
+ * "correct"/"solution"/"answer-key" or an "Answer:" line. Falls back to
+ * converting the HTML to plain text and running the markdown parser.
+ */
+export function parseQuizHtml(html: string): ParsedQuestion[] {
+  const h = cleanHtml(html);
+
+  const questions: ParsedQuestion[] = [];
+  const blockRe = /<([a-z0-9]+)[^>]*class="([^"]*question[^"]*)"[^>]*>([\s\S]*?)<\/\1>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = blockRe.exec(h))) {
+    const inner = m[3];
+    let qText = "";
+    const qel = /<([a-z0-9]+)[^>]*class="([^"]*(?:prompt|question-text|question-title|title)[^"]*)"[^>]*>([\s\S]*?)<\/\1>/i.exec(inner);
+    if (qel) qText = htmlText(qel[3]);
+    if (!qText) qText = htmlText(inner).split("\n")[0] || "";
+    if (!qText) continue;
+
+    const opts: string[] = [];
+    const liRe = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+    let x: RegExpExecArray | null;
+    while ((x = liRe.exec(inner))) {
+      const t = htmlText(x[1]);
+      if (t) opts.push(t);
+    }
+    if (opts.length === 0) {
+      const elRe = /<([a-z0-9]+)[^>]*class="([^"]*(?:option|choice|answer-item)[^"]*)"[^>]*>([\s\S]*?)<\/\1>/gi;
+      while ((x = elRe.exec(inner))) {
+        const t = htmlText(x[3]);
+        if (t) opts.push(t);
+      }
+    }
+
+    let answer: number | null = null;
+    const keyRe = /<([a-z0-9]+)[^>]*class="([^"]*(?:correct|solution|answer-key|right-answer)[^"]*)"[^>]*>([\s\S]*?)<\/\1>/gi;
+    while ((x = keyRe.exec(inner))) {
+      const idx = letterIndex(htmlText(x[3]));
+      if (idx != null) {
+        answer = idx;
+        break;
+      }
+    }
+    if (answer == null) {
+      const am = /answer\s*[:\-–]\s*\(?([A-Da-d])/i.exec(inner);
+      if (am) answer = am[1].toUpperCase().charCodeAt(0) - 65;
+    }
+
+    if (opts.length >= 2 && answer != null) {
+      questions.push({ question: qText, options: opts.slice(0, 4), answer, feedback: "" });
+    }
+  }
+
+  if (questions.length) return questions;
+
+  const asText = parseQuizMarkdown(htmlText(h));
+  return asText;
+}

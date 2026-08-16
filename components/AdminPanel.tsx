@@ -30,8 +30,8 @@ import {
 import { Icon } from "@/components/icons";
 import { PaperTrendChart, QuizTrendChart } from "@/components/StudentCharts";
 import LogoutButton from "@/components/LogoutButton";
-import { buildQuizTemplate } from "@/lib/quiz-markdown";
-import type { ContactRequest, Notice, Paper, Profile, QuizScore, Teacher, UserRequest } from "@/lib/types";
+import { buildQuizTemplate, parseQuizHtml, parseQuizMarkdown, questionsToMarkdown } from "@/lib/quiz-markdown";
+import type { ContactRequest, Notice, Paper, Profile, QuizQuestion, QuizScore, Teacher, UserRequest } from "@/lib/types";
 
 type Tab = "overview" | "requests" | "appeals" | "contacts" | "students" | "teachers" | "quizbank" | "results" | "admins" | "notices";
 
@@ -276,6 +276,71 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
     else flash(`Cleared all questions for Grade ${qGrade}.`);
     load();
     router.refresh();
+  }
+
+  async function doImportQuizFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    let text = "";
+    try {
+      text = await file.text();
+    } catch {
+      flash("Couldn't read that file.", true);
+      return;
+    }
+    const isHtml = /<([a-z][a-z0-9]*)\b[^>]*>/i.test(text);
+    if (isHtml) {
+      const parsed = parseQuizHtml(text);
+      if (parsed.length) {
+        setQMarkdown(questionsToMarkdown(parsed));
+        flash(
+          `Imported ${parsed.length} question${parsed.length !== 1 ? "s" : ""} from "${file.name}" — check them below, then upload to Grade ${qGrade}.`
+        );
+        return;
+      }
+    }
+    const fallback = parseQuizMarkdown(text);
+    if (fallback.length) {
+      setQMarkdown(text);
+      flash(
+        `Loaded ${fallback.length} question${fallback.length !== 1 ? "s" : ""} from "${file.name}" as text — review, then upload.`
+      );
+      return;
+    }
+    setQMarkdown(text);
+    flash(`Couldn't auto-parse "${file.name}". It's loaded as text — check the format.`, true);
+  }
+
+  async function doExportQuizGrade() {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from("quiz_questions")
+      .select("*")
+      .eq("grade", Number(qGrade))
+      .order("id");
+    if (error) {
+      flash(error.message, true);
+      return;
+    }
+    const qs = (data || []) as QuizQuestion[];
+    if (!qs.length) {
+      flash(`No questions in Grade ${qGrade} to export.`, true);
+      return;
+    }
+    const md = questionsToMarkdown(
+      qs.map((q) => ({ question: q.question, options: q.options, answer: q.answer, feedback: q.feedback || "" }))
+    );
+    const blob = new Blob([md], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `focal-quizzes-grade-${qGrade}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    flash(`Exported ${qs.length} question${qs.length !== 1 ? "s" : ""} from Grade ${qGrade}.`);
   }
 
   async function doLoadAdmins() {
@@ -1128,8 +1193,10 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
                   <span className="dot" /> Upload quiz questions (per grade)
                 </div>
                 <p style={{ fontSize: ".84rem", color: "var(--muted)", marginBottom: 16 }}>
-                  Paste questions in the format below. Each block needs numbered question, A–D
-                  options, and an <b>Answer:</b> line. Feedback is optional.
+                  Pick a grade, then either paste questions in the format below, or import an{" "}
+                  <b>HTML / text file</b> — the site reads the questions, options and answers out
+                  of it for you. Each block needs a numbered question, A–D options, and an{" "}
+                  <b>Answer:</b> line. Feedback is optional.
                 </p>
                 <form onSubmit={doUploadQuiz}>
                   <div className="field">
@@ -1169,12 +1236,26 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
                       Replace existing questions for this grade
                     </label>
                   </div>
-                  <button className="btn btn-primary">
-                    <Icon name="plus" size={16} /> Upload to Grade {qGrade}
-                  </button>
-                  <button type="button" className="btn btn-ghost" style={{ marginLeft: 10 }} onClick={doClearQuizGrade}>
-                    <Icon name="trash" size={15} /> Clear Grade {qGrade}
-                  </button>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <button className="btn btn-primary">
+                      <Icon name="plus" size={16} /> Upload to Grade {qGrade}
+                    </button>
+                    <label className="btn btn-ghost" style={{ cursor: "pointer" }}>
+                      <Icon name="grad" size={15} /> Import from file…
+                      <input
+                        type="file"
+                        hidden
+                        accept=".html,.htm,.txt,.md,.markdown"
+                        onChange={doImportQuizFile}
+                      />
+                    </label>
+                    <button type="button" className="btn btn-ghost" onClick={doExportQuizGrade}>
+                      <Icon name="bolt" size={15} /> Export Grade {qGrade}
+                    </button>
+                    <button type="button" className="btn btn-danger" onClick={doClearQuizGrade}>
+                      <Icon name="trash" size={15} /> Delete Grade {qGrade}
+                    </button>
+                  </div>
                 </form>
               </div>
 
