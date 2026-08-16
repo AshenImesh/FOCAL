@@ -2,12 +2,12 @@ import { Icon } from "@/components/icons";
 import ContactTeacher from "@/components/ContactTeacher";
 
 const SCHEDULE = [
-  { g: 6, day: "Wednesday", time: "5.30 – 7.30" },
-  { g: 7, day: "Friday", time: "3.30 – 5.30" },
-  { g: 8, day: "Thursday", time: "5.30 – 7.30" },
-  { g: 9, day: "Wednesday", time: "3.30 – 5.30" },
-  { g: 10, day: "Friday", time: "5.30 – 7.30" },
-  { g: 11, day: "Thursday", time: "3.30 – 5.30" },
+  { g: 6, day: "Wednesday", time: "5.30 PM – 7.30 PM" },
+  { g: 7, day: "Friday", time: "3.30 PM – 5.30 PM" },
+  { g: 8, day: "Thursday", time: "5.30 PM – 7.30 PM" },
+  { g: 9, day: "Wednesday", time: "3.30 PM – 5.30 PM" },
+  { g: 10, day: "Friday", time: "5.30 PM – 7.30 PM" },
+  { g: 11, day: "Thursday", time: "3.30 PM – 5.30 PM" },
 ];
 
 const MAP_EMBED =
