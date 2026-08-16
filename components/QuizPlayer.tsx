@@ -15,9 +15,10 @@ const TIME_PER_Q = 30;
 type Phase = "setup" | "playing" | "done";
 type Result = { score: number; total: number; pct: number; breakdown: { qid: string; ok: boolean }[] };
 
-export default function QuizPlayer({ profileName, profileGrade }: { profileName: string; profileGrade: number }) {
+export default function QuizPlayer({ profileName, profileGrade }: { profileName: string; profileGrade: number | null }) {
   const [phase, setPhase] = useState<Phase>("setup");
   const [grade, setGrade] = useState(profileGrade ? String(profileGrade) : "");
+  const [lockedGrade] = useState(profileGrade != null);
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [idx, setIdx] = useState(0);
   const [answers, setAnswers] = useState<{ qid: string; selected: number }[]>([]);
@@ -138,26 +139,40 @@ export default function QuizPlayer({ profileName, profileGrade }: { profileName:
           <span className="eyebrow">Science quizzes</span>
           <h1>Test yourself</h1>
           <p>
-            {profileName}, pick your grade and take a timed 10-question quiz. Your best score lands
-            on the leaderboard.
+            {profileName}, take a timed 10-question quiz for your grade. Your best score lands on
+            the leaderboard.
           </p>
         </div>
         <div className="card" style={{ padding: 28 }}>
           {error && <div className="form-error">{error}</div>}
-          <div className="field">
-            <label>Your grade</label>
-            <div className="chips">
-              {GRADES.map((g) => (
-                <button
-                  key={g}
-                  className={"chip" + (grade === g ? " active" : "")}
-                  onClick={() => setGrade(g)}
-                >
-                  Grade {g}
-                </button>
-              ))}
+          {lockedGrade ? (
+            <div className="field">
+              <label>Your grade</label>
+              <div className="chips">
+                <span className="chip active" style={{ cursor: "default" }}>
+                  Grade {profileGrade}
+                </span>
+                <span className="quiz-lock-note">
+                  <Icon name="lock" size={13} /> Quizzes are matched to your grade.
+                </span>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="field">
+              <label>Your grade</label>
+              <div className="chips">
+                {GRADES.map((g) => (
+                  <button
+                    key={g}
+                    className={"chip" + (grade === g ? " active" : "")}
+                    onClick={() => setGrade(g)}
+                  >
+                    Grade {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <button className="btn btn-primary btn-block" onClick={startQuiz} disabled={busy || !grade}>
             <Icon name="bolt" size={17} /> {busy ? "Loading questions…" : "Start quiz"}
           </button>

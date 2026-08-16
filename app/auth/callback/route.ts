@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isAdminEmail } from "@/lib/actions";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -24,9 +25,7 @@ export async function GET(request: NextRequest) {
     .eq("id", user.id)
     .maybeSingle();
 
-  const isAdmin =
-    !!process.env.ADMIN_EMAIL &&
-    user.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase();
+  const isAdmin = await isAdminEmail(user.email);
 
   if (!profile) {
     const { error: insErr } = await supabase.from("profiles").insert({

@@ -62,8 +62,8 @@ export default function HomePage() {
                 <div className="ph-blob" />
                 <TeacherPhoto />
               </div>
-              <div className="photo-name">Your science teacher</div>
-              <div className="photo-sub">FOCAL Classes · Grades 6–11</div>
+              <div className="photo-name">Ashen Hindle</div>
+              <div className="photo-sub">BSc (Physics) UG · FOCAL Classes</div>
             </div>
             <div className="hv-chip c1">
               <Icon name="trophy" size={18} />

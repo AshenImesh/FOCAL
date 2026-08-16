@@ -19,5 +19,5 @@ export default async function QuizPage() {
   const profile = data as Profile | null;
   if (!profile) redirect("/register");
 
-  return <QuizPlayer profileName={profile.full_name || "Student"} profileGrade={profile.grade || 6} />;
+  return <QuizPlayer profileName={profile.full_name || "Student"} profileGrade={profile.grade ?? null} />;
 }

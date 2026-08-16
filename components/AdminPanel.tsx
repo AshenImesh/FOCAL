@@ -15,19 +15,23 @@ import {
   deleteNotice,
   uploadQuizBank,
   clearQuizGrade,
-  logoutUser,
+  listAdmins,
+  addAdminEmail,
+  removeAdminEmail,
 } from "@/lib/actions";
 import { Icon } from "@/components/icons";
+import LogoutButton from "@/components/LogoutButton";
 import { buildQuizTemplate } from "@/lib/quiz-markdown";
 import type { Notice, Paper, Profile, QuizScore, Teacher } from "@/lib/types";
 
-type Tab = "overview" | "requests" | "students" | "teachers" | "notices" | "quizbank";
+type Tab = "overview" | "requests" | "students" | "teachers" | "quizbank" | "admins" | "notices";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "requests", label: "Registration requests" },
   { id: "students", label: "Students" },
   { id: "teachers", label: "Teachers" },
+  { id: "admins", label: "Admins" },
   { id: "quizbank", label: "Quiz bank" },
   { id: "notices", label: "Notices" },
 ];
@@ -73,6 +77,8 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
   const [qMarkdown, setQMarkdown] = useState(buildQuizTemplate());
   const [qReplace, setQReplace] = useState(false);
   const [qCounts, setQCounts] = useState<Record<string, number>>({});
+  const [admins, setAdmins] = useState<{ id: string; email: string; created_at: string }[]>([]);
+  const [aForm, setAForm] = useState("");
 
   const flash = (m: string, isErr = false) => {
     setMsg(isErr ? "" : m);
@@ -231,6 +237,36 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
     router.refresh();
   }
 
+  async function doLoadAdmins() {
+    const res = await listAdmins();
+    if (res && "admins" in res && res.admins) setAdmins(res.admins);
+  }
+
+  async function doAddAdmin(e: React.FormEvent) {
+    e.preventDefault();
+    const fd = new FormData();
+    fd.set("email", aForm);
+    const res = await addAdminEmail(fd);
+    if (res && "error" in res && res.error) flash(res.error, true);
+    else {
+      flash(`Added ${aForm} as an admin. They can sign in with Google and manage the site.`);
+      setAForm("");
+      doLoadAdmins();
+    }
+  }
+
+  async function doRemoveAdmin(id: string) {
+    if (!confirm("Remove this admin? They will lose access to the admin panel.")) return;
+    const fd = new FormData();
+    fd.set("id", id);
+    const res = await removeAdminEmail(fd);
+    if (res && "error" in res && res.error) flash(res.error, true);
+    else {
+      flash("Admin removed.");
+      doLoadAdmins();
+    }
+  }
+
   const counts = {
     students: students.filter((s) => s.role === "student").length,
     approved: approved.length,
@@ -271,7 +307,14 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
 
       <div className="panel-tabs">
         {TABS.map((t) => (
-          <button key={t.id} className={"tab" + (tab === t.id ? " active" : "")} onClick={() => setTab(t.id)}>
+          <button
+            key={t.id}
+            className={"tab" + (tab === t.id ? " active" : "")}
+            onClick={() => {
+              setTab(t.id);
+              if (t.id === "admins") doLoadAdmins();
+            }}
+          >
             {t.label}
             {t.id === "requests" && pending.length > 0 && (
               <span style={{ background: "var(--bad)", color: "#fff", borderRadius: 999, fontSize: ".66rem", padding: "1px 7px" }}>
@@ -667,6 +710,79 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
             </>
           )}
 
+          {tab === "admins" && (
+            <>
+              <div className="card admin-sec" style={{ padding: 26 }}>
+                <div className="sec-title">
+                  <span className="dot" /> Add an admin
+                </div>
+                <p style={{ fontSize: ".84rem", color: "var(--muted)", marginBottom: 16 }}>
+                  Enter a Gmail address to grant admin access. They sign in with Google on the
+                  login page and land straight in the admin panel.
+                </p>
+                <form onSubmit={doAddAdmin} style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <input
+                    className="input"
+                    value={aForm}
+                    onChange={(e) => setAForm(e.target.value)}
+                    placeholder="e.g. teacher@gmail.com"
+                    type="email"
+                    required
+                    style={{ flex: 1, minWidth: 220 }}
+                  />
+                  <button className="btn btn-primary">
+                    <Icon name="plus" size={16} /> Add admin
+                  </button>
+                </form>
+              </div>
+
+              <div className="card admin-sec" style={{ padding: "14px 20px" }}>
+                <div className="sec-title" style={{ marginBottom: 6 }}>
+                  <span className="dot" /> Admins ({admins.length + 1})
+                </div>
+                <div className="list-row">
+                  <div className="who">
+                    <div className="mini">
+                      <Icon name="user" size={14} />
+                    </div>
+                    <div>
+                      <div className="nm">
+                        Owner <span className="pill pill-ok" style={{ marginLeft: 8 }}><span className="dot" /> primary</span>
+                      </div>
+                      <div className="sub">Signed in as the site owner — cannot be removed here.</div>
+                    </div>
+                  </div>
+                </div>
+                {admins.length === 0 ? (
+                  <p style={{ fontSize: ".86rem", color: "var(--faint)", padding: "10px 0" }}>
+                    No additional admins yet.
+                  </p>
+                ) : (
+                  admins.map((a) => (
+                    <div className="list-row" key={a.id}>
+                      <div className="who">
+                        <div className="mini">
+                          <Icon name="user" size={14} />
+                        </div>
+                        <div>
+                          <div className="nm">{a.email}</div>
+                          <div className="sub">
+                            added {new Date(a.created_at).toLocaleDateString("en-GB")}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="acts">
+                        <button className="icon-btn" title="Remove admin" onClick={() => doRemoveAdmin(a.id)}>
+                          <Icon name="trash" size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+
           {tab === "notices" && (
             <>
               <div className="card admin-sec" style={{ padding: 26 }}>
@@ -747,14 +863,7 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
       )}
 
       <div style={{ marginTop: 30, textAlign: "right" }}>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={async () => {
-            await logoutUser();
-          }}
-        >
-          <Icon name="logout" size={14} /> Sign out
-        </button>
+        <LogoutButton className="btn btn-ghost btn-sm" label="Sign out" />
       </div>
     </div>
   );

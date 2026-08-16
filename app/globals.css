@@ -138,6 +138,11 @@ textarea.input{resize:vertical;min-height:100px;font-family:var(--font-b);font-s
 .chip:hover{border-color:var(--accent);color:var(--accent)}
 .chip.active{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 6px 14px -6px rgba(79,70,229,.5)}
 .chip.active:hover{color:#fff}
+.quiz-lock-note{
+  display:inline-flex;align-items:center;gap:6px;align-self:center;
+  font-size:.78rem;color:var(--faint);margin-left:6px;
+}
+.quiz-lock-note svg{width:13px;height:13px}
 
 /* ── Cards ──────────────────────────────────────────── */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
@@ -493,6 +498,27 @@ tbody tr:hover td{background:var(--surface-2)}
 .gate-card h2{font-family:var(--font-d);font-weight:700;font-size:1.3rem;margin-bottom:6px}
 .gate-card p{color:var(--muted);font-size:.86rem;margin-bottom:20px}
 .form-error{background:var(--bad-soft);border:1px solid var(--bad-line);color:var(--bad);border-radius:10px;padding:10px 14px;font-size:.82rem;margin-bottom:14px;text-align:left}
+
+/* ── Confirm modal ──────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;z-index:120;background:rgba(16,19,29,.45);
+  display:flex;align-items:center;justify-content:center;padding:24px;
+  animation:fadeIn .18s ease;
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal-card{
+  width:min(360px,100%);background:var(--surface);border:1px solid var(--border);
+  border-radius:20px;padding:28px;text-align:center;box-shadow:0 24px 60px -20px rgba(16,19,29,.4);
+  animation:rise .22s cubic-bezier(.2,.7,.3,1);
+}
+.modal-ic{
+  width:56px;height:56px;border-radius:16px;margin:0 auto 16px;
+  background:var(--bad-soft);color:var(--bad);display:flex;align-items:center;justify-content:center;
+}
+.modal-card h3{font-family:var(--font-d);font-size:1.15rem;font-weight:700;margin-bottom:8px}
+.modal-card p{font-size:.86rem;color:var(--muted);margin-bottom:22px}
+.modal-actions{display:flex;gap:10px}
+.modal-actions .btn{flex:1}
 
 /* ── Toast ──────────────────────────────────────────── */
 #toast{

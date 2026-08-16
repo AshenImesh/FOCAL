@@ -43,6 +43,20 @@ async function requireAdmin(): Promise<Profile> {
 const SESSION_SECRET = process.env.SESSION_SECRET || "focal-dev-secret-change-me";
 const TEACHER_COOKIE = "focal_teacher";
 
+/** True if this email belongs to the owner (env) or an added admin. */
+export async function isAdminEmail(email: string | undefined | null): Promise<boolean> {
+  if (!email) return false;
+  const norm = email.trim().toLowerCase();
+  if (process.env.ADMIN_EMAIL && norm === process.env.ADMIN_EMAIL.toLowerCase()) return true;
+  const admin = createAdminClient();
+  if (!admin) return false;
+  const { data } = await (admin.from("admins") as any)
+    .select("id")
+    .eq("email", norm)
+    .maybeSingle();
+  return !!data;
+}
+
 function signToken(payload: object) {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = crypto
@@ -145,9 +159,7 @@ export async function completeRegistration(formData: FormData) {
     .maybeSingle();
 
   if (!existing) {
-    const isAdmin =
-      process.env.ADMIN_EMAIL &&
-      user.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase();
+    const isAdmin = await isAdminEmail(user.email);
     await supabase.from("profiles").insert({
       id: user.id,
       full_name,
@@ -424,6 +436,54 @@ export async function clearQuizGrade(formData: FormData) {
   const { error } = await admin.from("quiz_questions").delete().eq("grade", grade);
   if (error) return { error: error.message };
   revalidatePath("/quiz");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/* ── admin: admin emails ─────────────────────────────── */
+
+export async function listAdmins() {
+  await requireAdmin();
+  const admin = createAdminClient();
+  if (!admin) return { error: "Not configured" };
+  const { data } = await (admin.from("admins") as any)
+    .select("id, email, created_at")
+    .order("created_at");
+  return { admins: (data || []) as { id: string; email: string; created_at: string }[] };
+}
+
+export async function addAdminEmail(formData: FormData) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  if (!admin) return { error: "Not configured" };
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return { error: "Enter a valid email address." };
+  const { data: exists } = await (admin.from("admins") as any)
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+  if (exists) return { error: "That email is already an admin." };
+  const { error } = await (admin.from("admins") as any).insert({ email });
+  if (error) return { error: error.message };
+  revalidatePath("/admin");
+  return { ok: true, email };
+}
+
+export async function removeAdminEmail(formData: FormData) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  if (!admin) return { error: "Not configured" };
+  const id = String(formData.get("id") || "");
+  const { data: row } = await (admin.from("admins") as any)
+    .select("email")
+    .eq("id", id)
+    .maybeSingle();
+  if (row && process.env.ADMIN_EMAIL && row.email === process.env.ADMIN_EMAIL.toLowerCase()) {
+    return { error: "You can't remove the owner's email." };
+  }
+  const { error } = await (admin.from("admins") as any).delete().eq("id", id);
+  if (error) return { error: error.message };
   revalidatePath("/admin");
   return { ok: true };
 }

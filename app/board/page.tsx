@@ -26,12 +26,13 @@ export default function BoardPage() {
       const [q, p, profiles] = await Promise.all([
         supabase.from("quiz_scores").select("*").limit(500),
         supabase.from("papers").select("*").limit(500),
-        supabase.from("profiles").select("id, full_name"),
+        supabase.from("profiles").select("id, full_name, role"),
       ]);
       const nameOf = new Map<string, string>();
-      ((profiles.data || []) as { id: string; full_name: string | null }[]).forEach((pr) =>
-        nameOf.set(pr.id, pr.full_name || "Student")
-      );
+      ((profiles.data || []) as { id: string; full_name: string | null; role: string }[]).forEach((pr) => {
+        if (pr.role !== "student") return;
+        nameOf.set(pr.id, pr.full_name || "Student");
+      });
 
       const best = new Map<string, QuizScore>();
       (q.data || []).forEach((s: QuizScore) => {

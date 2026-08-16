@@ -57,6 +57,13 @@ create table if not exists public.teachers (
   created_at    timestamptz not null default now()
 );
 
+-- ── Admins (additional admin emails, service-role only) ─────────
+create table if not exists public.admins (
+  id         bigint generated always as identity primary key,
+  email      text not null unique,
+  created_at timestamptz not null default now()
+);
+
 -- ── Notices (site-wide banner, created by the admin) ─────────────
 create table if not exists public.notices (
   id         bigint generated always as identity primary key,
@@ -191,6 +198,9 @@ create policy "notices_delete_admin" on public.notices
   for delete using (is_admin());
 
 -- teachers: no policies — only the service-role key (server-side) can
+-- read or write this table.
+
+-- admins: no policies — only the service-role key (server-side) can
 -- read or write this table.
 
 -- ════════════════════════════════════════════════════════════════

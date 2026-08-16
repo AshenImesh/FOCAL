@@ -11,13 +11,14 @@ export default async function HomeLeaderboard() {
 
   const [qRes, pRes] = await Promise.all([
     supabase.from("quiz_scores").select("student_id, grade, score, total, pct").limit(300),
-    supabase.from("profiles").select("id, full_name").limit(500),
+    supabase.from("profiles").select("id, full_name, role").limit(500),
   ]);
 
   const nameOf = new Map<string, string>();
-  ((pRes.data || []) as { id: string; full_name: string | null }[]).forEach((pr) =>
-    nameOf.set(pr.id, pr.full_name || "Student")
-  );
+  ((pRes.data || []) as { id: string; full_name: string | null; role: string }[]).forEach((pr) => {
+    if (pr.role !== "student") return;
+    nameOf.set(pr.id, pr.full_name || "Student");
+  });
 
   const best = new Map<string, QuizScore>();
   ((qRes.data || []) as QuizScore[]).forEach((s) => {

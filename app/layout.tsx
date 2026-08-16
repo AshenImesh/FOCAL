@@ -3,8 +3,9 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
-import { logoutUser } from "@/lib/actions";
 import { Icon, BrandMark } from "@/components/icons";
+import { NavLinks, BottomNav, type NavItem } from "@/components/NavLinks";
+import LogoutButton from "@/components/LogoutButton";
 import NoticeBanner from "@/components/NoticeBanner";
 import type { Profile } from "@/lib/types";
 
@@ -18,12 +19,12 @@ export const viewport: Viewport = {
   themeColor: "#F4F5FA",
 };
 
-const NAV = [
+const NAV: NavItem[] = [
   { href: "/", label: "Home", icon: "home", active: "" },
   { href: "/dashboard", label: "Results", icon: "bars", active: "dashboard" },
   { href: "/quiz", label: "Quiz", icon: "bolt", active: "quiz" },
   { href: "/board", label: "Board", icon: "trophy", active: "board" },
-] as const;
+];
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient();
@@ -75,13 +76,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <BrandMark /> FOCAL
             </Link>
             <div className="nav-links">
-              {NAV.map((n) => (
-                <Link key={n.href} href={n.href} className={n.active === "" ? "" : undefined}>
-                  {n.label}
-                </Link>
-              ))}
-              {profile?.role === "admin" && <Link href="/admin">Admin</Link>}
-              {profile?.role === "teacher" && <Link href="/teacher">Teacher</Link>}
+              <NavLinks
+                items={[
+                  ...NAV,
+                  ...(profile?.role === "admin"
+                    ? [{ href: "/admin", label: "Admin", icon: "user", active: "admin" }]
+                    : []),
+                  ...(profile?.role === "teacher"
+                    ? [{ href: "/teacher", label: "Teacher", icon: "user", active: "teacher" }]
+                    : []),
+                ]}
+              />
             </div>
             {user ? (
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -96,11 +101,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                   </span>
                   <span className="nm">{profile?.full_name?.split(" ")[0] || user.user_metadata?.full_name?.split(" ")[0] || "Account"}</span>
                 </Link>
-                <form action={logoutUser}>
-                  <button className="icon-btn" style={{ width: 34, height: 34 }} title="Log out">
-                    <Icon name="logout" size={15} />
-                  </button>
-                </form>
+                <LogoutButton className="icon-btn" style={{ width: 34, height: 34 }} />
               </div>
             ) : (
               <Link href="/login" className="nav-cta">
@@ -146,22 +147,18 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </div>
         </footer>
 
-        <nav className="bottom">
-          <div className="bottom-inner">
-            {NAV.map((n) => (
-              <Link key={n.href} href={n.href}>
-                <Icon name={n.icon} size={20} />
-                {n.label}
-              </Link>
-            ))}
-            {!user && (
-              <Link href="/login">
-                <Icon name="user" size={20} />
-                Login
-              </Link>
-            )}
-          </div>
-        </nav>
+        <BottomNav
+          items={[
+            ...NAV,
+            ...(profile?.role === "admin"
+              ? [{ href: "/admin", label: "Admin", icon: "user", active: "admin" }]
+              : []),
+            ...(profile?.role === "teacher"
+              ? [{ href: "/teacher", label: "Teacher", icon: "user", active: "teacher" }]
+              : []),
+            ...(!user ? [{ href: "/login", label: "Login", icon: "user", active: "login" }] : []),
+          ]}
+        />
 
         <div id="toast" />
       </body>
