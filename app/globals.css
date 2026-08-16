@@ -187,12 +187,12 @@ textarea.input{resize:vertical;min-height:100px;font-family:var(--font-b);font-s
 .hero::after{
   content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
   background:
+    radial-gradient(80% 110% at 90% 50%,rgba(196,181,253,.30),transparent 62%),
     linear-gradient(90deg,
-      rgba(124,58,237,0) 10%,
-      rgba(124,58,237,.05) 38%,
-      rgba(124,58,237,.13) 62%,
-      rgba(124,58,237,.17) 100%),
-    radial-gradient(80% 95% at 88% 45%,rgba(124,58,237,.18),transparent 68%);
+      rgba(196,181,253,0) 34%,
+      rgba(196,181,253,.16) 47%,
+      rgba(196,181,253,.38) 60%,
+      rgba(196,181,253,.45) 100%);
 }
 .hero-visual{position:relative;min-height:460px;display:flex;align-items:flex-end;justify-content:center}
 .photo-card{
@@ -212,8 +212,8 @@ textarea.input{resize:vertical;min-height:100px;font-family:var(--font-b);font-s
   transform:translateY(3px);
 }
 .photo-frame .ph-blob{
-  position:absolute;width:300px;height:300px;border-radius:50%;
-  background:radial-gradient(circle,rgba(124,58,237,.28),transparent 70%);
+  position:absolute;width:320px;height:320px;border-radius:50%;
+  background:radial-gradient(circle,rgba(167,139,250,.32),transparent 70%);
   top:18px;left:50%;transform:translateX(-50%);pointer-events:none;
 }
 .photo-frame::before{
