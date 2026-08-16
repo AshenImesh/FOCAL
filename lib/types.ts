@@ -1,50 +1,70 @@
-export type Student = {
-  id: string;
-  email: string;
-  name: string;
-  grade: string;
-  phone: string | null;
-  approved: boolean;
-  created_at: string;
-};
+export type Role = "student" | "teacher" | "admin";
+export type Status = "pending" | "approved" | "rejected";
 
-export type PaperResult = {
-  id: number;
+export interface Profile {
+  id: string;
+  full_name: string | null;
+  grade: number | null;
+  phone: string | null;
+  role: Role;
+  status: Status;
+  created_at: string;
+}
+
+export interface Paper {
+  id: string;
   student_id: string;
-  paper: string;
+  paper_name: string;
   marks: number;
   total: number;
   date: string | null;
   created_at: string;
-};
+}
 
-export type QuizScore = {
-  id: number;
+export interface QuizScore {
+  id: string;
   student_id: string;
-  grade: string;
+  grade: number;
   score: number;
   total: number;
   pct: number;
   created_at: string;
-};
+}
 
-export type Teacher = {
-  id: number;
-  name: string;
-  username: string;
-  created_at: string;
-};
+export interface QuizQuestion {
+  id: string;
+  grade: number;
+  question: string;
+  options: string[];
+  answer: number;
+  feedback: string | null;
+}
 
-export type Notice = {
-  id: number;
-  message: string;
+export interface Notice {
+  id: string;
+  title: string;
+  body: string;
   active: boolean;
   created_at: string;
-};
+}
 
-export type Question = {
-  q: string;
-  o: string[];
-  a: number;
-  f: string;
-};
+export interface Teacher {
+  id: string;
+  full_name: string;
+  username: string;
+  created_at: string;
+}
+
+export interface Prediction {
+  slope: number;
+  predicted: number;
+  trend: "improving" | "steady" | "declining";
+}
+
+export interface PaperRow extends Paper {
+  pct: number;
+}
+
+export interface ScoreRow extends QuizScore {
+  profiles: { full_name: string | null } | null;
+}

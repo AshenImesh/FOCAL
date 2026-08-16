@@ -1,50 +1,34 @@
 import Link from "next/link";
-import Image from "next/image";
-import { Ic } from "./components/icons";
-import { GRADES } from "@/lib/constants";
-import { createClient } from "@/lib/supabase/server";
+import { Icon } from "@/components/icons";
+import TeacherPhoto from "@/components/TeacherPhoto";
+import HomeLeaderboard from "@/components/HomeLeaderboard";
 
-export const dynamic = "force-dynamic";
+const GRADES = ["6", "7", "8", "9", "10", "11"];
 
-export default async function HomePage() {
-  let signedIn = false;
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    signedIn = !!user;
-  } catch {
-    signedIn = false;
-  }
-
-  const resultsHref = signedIn ? "/dashboard" : "/login";
-
+export default function HomePage() {
   return (
-    <div className="view">
+    <>
       <section className="hero">
         <div className="dot-grid" />
         <div className="blob b1" />
         <div className="blob b2" />
         <div className="wrap hero-grid">
           <div>
-            <span className="eyebrow hero-eyebrow">
-              Grades 6 – 11 · Science · English Medium
-            </span>
+            <span className="eyebrow hero-eyebrow">Grades 6 – 11 · Science · English Medium</span>
             <h1>
               Science,<br />
               <span className="grad">in focus.</span>
             </h1>
             <p className="lead">
-              Your class hub for everything science — check paper results, take
-              quizzes, and see where you stand. Simple, clean, no clutter.
+              Your class hub for everything science — check paper results, take quizzes, and see
+              where you stand. Simple, clean, no clutter.
             </p>
             <div className="hero-cta">
-              <Link className="btn btn-primary" href={resultsHref}>
-                <Ic.search size={17} /> View my results
+              <Link className="btn btn-primary" href="/login">
+                <Icon name="search" size={17} /> Log in to see results
               </Link>
-              <Link className="btn btn-ghost" href="/quiz">
-                <Ic.bolt size={17} /> Take a quiz
+              <Link className="btn btn-ghost" href="/login">
+                <Icon name="bolt" size={17} /> Take a quiz
               </Link>
             </div>
             <div className="hero-facts">
@@ -58,7 +42,7 @@ export default async function HomePage() {
                 <div className="num">
                   <b>2</b> boards
                 </div>
-                <div className="lbl">Quiz & paper</div>
+                <div className="lbl">Quiz &amp; paper</div>
               </div>
               <div className="fact">
                 <div className="num">
@@ -72,44 +56,25 @@ export default async function HomePage() {
               </div>
             </div>
           </div>
-
           <div className="hero-visual">
-            <div className="photo-frame">
-              <Image
-                src="/teacher.jpg"
-                alt="Your FOCAL teacher"
-                fill
-                sizes="(max-width: 920px) 300px, 300px"
-                priority
-              />
-              <div className="tint" />
-            </div>
-            <div className="hv-card">
-              <div className="hv-name">Meet your teacher</div>
-              <div className="hv-sub" style={{ marginBottom: 12 }}>
-                FOCAL Science · Grades 6–11
+            <div className="photo-card">
+              <div className="photo-frame">
+                <div className="ph-blob" />
+                <TeacherPhoto />
               </div>
-              <div className="hv-rows">
-                <div className="hv-row">
-                  <span className="n">Paper results</span>
-                  <span className="v good">Posted here</span>
-                </div>
-                <div className="hv-row">
-                  <span className="n">Quizzes</span>
-                  <span className="v">Weekly</span>
-                </div>
-              </div>
+              <div className="photo-name">Your science teacher</div>
+              <div className="photo-sub">FOCAL Classes · Grades 6–11</div>
             </div>
             <div className="hv-chip c1">
-              <Ic.trophy size={18} />
+              <Icon name="trophy" size={18} />
               <span>
-                Class leaderboard<small>Updated after every quiz</small>
+                Hall of fame<small>Quiz &amp; paper boards</small>
               </span>
             </div>
             <div className="hv-chip c2">
-              <Ic.bolt size={18} />
+              <Icon name="grad" size={18} />
               <span>
-                Learn & track<small>See your growth with charts</small>
+                Personal analysis<small>Trends &amp; predictions</small>
               </span>
             </div>
           </div>
@@ -123,20 +88,17 @@ export default async function HomePage() {
           <p>From paper scores to quiz challenges — everything is a click away.</p>
         </div>
         <div className="features">
-          <Link className="feat" href={resultsHref}>
+          <Link className="feat" href="/login">
             <div className="ic">
-              <Ic.search size={21} />
+              <Icon name="search" size={21} />
             </div>
             <h3>Check results</h3>
-            <p>
-              Log in with Gmail and see every paper score instantly — no typing
-              your name every time.
-            </p>
+            <p>Log in with your Gmail and see every paper score, quiz history and analysis.</p>
             <span className="go">→</span>
           </Link>
-          <Link className="feat" href="/quiz">
+          <Link className="feat" href="/login">
             <div className="ic">
-              <Ic.bolt size={21} />
+              <Icon name="bolt" size={21} />
             </div>
             <h3>Science quizzes</h3>
             <p>Timed quizzes for every grade with instant feedback — learn while you play.</p>
@@ -144,22 +106,24 @@ export default async function HomePage() {
           </Link>
           <Link className="feat" href="/board">
             <div className="ic">
-              <Ic.trophy size={21} />
+              <Icon name="trophy" size={21} />
             </div>
             <h3>Leaderboards</h3>
-            <p>See how you rank against the class on the quiz board.</p>
+            <p>Two boards — quiz champions and top paper scorers. See how you rank.</p>
             <span className="go">→</span>
           </Link>
-          <Link className="feat" href={signedIn ? "/dashboard" : "/login"}>
+          <Link className="feat" href="/login">
             <div className="ic">
-              <Ic.user size={21} />
+              <Icon name="chart" size={21} />
             </div>
-            <h3>Register / Login</h3>
-            <p>Sign in with your Gmail — your results find you automatically.</p>
+            <h3>Performance analysis</h3>
+            <p>Charts of your progress and a prediction of what comes next.</p>
             <span className="go">→</span>
           </Link>
         </div>
       </section>
+
+      <HomeLeaderboard />
 
       <section className="section-tight">
         <div className="sec-head">
@@ -169,13 +133,13 @@ export default async function HomePage() {
         </div>
         <div className="grade-strip">
           {GRADES.map((g) => (
-            <Link key={g} className="grade-pill" href="/quiz">
+            <Link key={g} className="grade-pill" href="/login">
               Grade {g}
               <small>Science</small>
             </Link>
           ))}
         </div>
       </section>
-    </div>
+    </>
   );
 }

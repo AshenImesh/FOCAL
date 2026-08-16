@@ -1,80 +1,172 @@
-import type { Metadata } from "next";
-import { Inter, Space_Grotesk } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
+import Link from "next/link";
 import "./globals.css";
-import { ToastProvider } from "./components/toast";
-import { NoticeBanner } from "./components/notice-banner";
-import { SiteNav, type NavUser } from "./components/site-nav";
-import { Footer } from "./components/footer";
-import { publicClient } from "@/lib/supabase/public";
 import { createClient } from "@/lib/supabase/server";
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-d",
-  display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-b",
-  display: "swap",
-});
+import { logoutUser } from "@/lib/actions";
+import { Icon, BrandMark } from "@/components/icons";
+import NoticeBanner from "@/components/NoticeBanner";
+import type { Profile } from "@/lib/types";
 
 export const metadata: Metadata = {
   title: "FOCAL — Science Classes · Grades 6–11",
   description:
-    "FOCAL — tuition science classes for grades 6–11 (English medium). Check results, take quizzes, climb the leaderboard.",
+    "FOCAL — tuition science classes for grades 6–11 (English medium, Sri Lanka). Check results, take quizzes, climb the leaderboard.",
 };
 
-async function getNotices() {
-  try {
-    const { data } = await publicClient()
-      .from("notices")
-      .select("message")
-      .eq("active", true)
-      .order("created_at", { ascending: false })
-      .limit(5)
-      .returns<{ message: string }[]>();
-    return (data ?? []).map((n) => n.message);
-  } catch {
-    return [];
-  }
+export const viewport: Viewport = {
+  themeColor: "#F4F5FA",
+};
+
+const NAV = [
+  { href: "/", label: "Home", icon: "home", active: "" },
+  { href: "/dashboard", label: "Results", icon: "bars", active: "dashboard" },
+  { href: "/quiz", label: "Quiz", icon: "bolt", active: "quiz" },
+  { href: "/board", label: "Board", icon: "trophy", active: "board" },
+] as const;
+
+function initials(name: string | null | undefined) {
+  if (!name) return "?";
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
 }
 
-async function getUser(): Promise<NavUser> {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return null;
-    return {
-      name: (user.user_metadata?.full_name as string) || null,
-      email: user.email || "",
-    };
-  } catch {
-    return null;
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const supabase = await createClient();
+  let user = null;
+  let profile: Profile | null = null;
+  let notices: { id: string; title: string; body: string; active: boolean; created_at: string }[] = [];
+
+  if (supabase) {
+    const [{ data: authData }, noticeData] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase
+        .from("notices")
+        .select("id, title, body, active, created_at")
+        .eq("active", true)
+        .order("created_at", { ascending: false })
+        .limit(3),
+    ]);
+    user = authData.user;
+    notices = (noticeData.data || []).filter((n) => n.active);
+    if (user) {
+      const { data: p } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+      profile = (p as Profile) || null;
+    }
   }
-}
-
-export const dynamic = "force-dynamic";
-
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [notices, user] = await Promise.all([getNotices(), getUser()]);
 
   return (
-    <html lang="en" className={`${spaceGrotesk.variable} ${inter.variable}`}>
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap"
+          rel="stylesheet"
+        />
+        <link
+          rel="icon"
+          href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%234F46E5'/%3E%3Ccircle cx='32' cy='32' r='13' fill='none' stroke='white' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='white'/%3E%3C/svg%3E"
+        />
+      </head>
       <body>
-        <ToastProvider>
-          <NoticeBanner notices={notices} />
-          <SiteNav user={user} />
-          <main>{children}</main>
-          <Footer user={user} />
-        </ToastProvider>
+        <NoticeBanner notices={notices} />
+        <nav className="top">
+          <div className="nav-inner">
+            <Link className="brand" href="/">
+              <BrandMark /> FOCAL
+            </Link>
+            <div className="nav-links">
+              {NAV.map((n) => (
+                <Link key={n.href} href={n.href} className={n.active === "" ? "" : undefined}>
+                  {n.label}
+                </Link>
+              ))}
+              {profile?.role === "admin" && <Link href="/admin">Admin</Link>}
+              {profile?.role === "teacher" && <Link href="/teacher">Teacher</Link>}
+            </div>
+            {user ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Link href="/dashboard" className="nav-user">
+                  <span className="ini">{initials(profile?.full_name)}</span>
+                  <span className="nm">{profile?.full_name?.split(" ")[0] || "Student"}</span>
+                </Link>
+                <form action={logoutUser}>
+                  <button className="icon-btn" style={{ width: 34, height: 34 }} title="Log out">
+                    <Icon name="logout" size={15} />
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <Link href="/login" className="nav-cta">
+                Log in with Google
+              </Link>
+            )}
+          </div>
+        </nav>
+
+        <main>{children}</main>
+
+        <footer>
+          <div className="foot-inner">
+            <div className="foot-brand">
+              <Link className="brand" href="/">
+                <BrandMark size={26} /> FOCAL
+              </Link>
+              <p>Tuition science classes for grades 6–11, English medium, Sri Lanka.</p>
+            </div>
+            <div className="foot-cols">
+              <div className="col">
+                <h4>Explore</h4>
+                <Link href="/dashboard">Results</Link>
+                <Link href="/quiz">Quizzes</Link>
+                <Link href="/board">Leaderboard</Link>
+                <Link href="/login">Register / Login</Link>
+              </div>
+              <div className="col">
+                <h4>Class</h4>
+                <Link href="/">Grades 6–11</Link>
+                <Link href="/">Science · English</Link>
+                <Link href="/">Sri Lanka</Link>
+              </div>
+              <div className="col">
+                <h4>Staff</h4>
+                <Link href="/teacher">Teacher panel</Link>
+                <Link href="/admin">Admin panel</Link>
+              </div>
+            </div>
+          </div>
+          <div className="foot-bottom">
+            FOCAL <b>·</b> Made with care for students in Sri Lanka
+          </div>
+        </footer>
+
+        <nav className="bottom">
+          <div className="bottom-inner">
+            {NAV.map((n) => (
+              <Link key={n.href} href={n.href}>
+                <Icon name={n.icon} size={20} />
+                {n.label}
+              </Link>
+            ))}
+            {!user && (
+              <Link href="/login">
+                <Icon name="user" size={20} />
+                Login
+              </Link>
+            )}
+          </div>
+        </nav>
+
+        <div id="toast" />
       </body>
     </html>
   );

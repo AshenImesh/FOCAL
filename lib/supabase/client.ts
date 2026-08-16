@@ -1,16 +1,13 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
-import type { Database } from "@/lib/database.types";
 
-let cached: ReturnType<typeof createBrowserClient<Database>> | null = null;
+let client: ReturnType<typeof createBrowserClient> | null = null;
 
 export function createClient() {
-  if (!cached) {
-    cached = createBrowserClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-  }
-  return cached;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  if (!client) client = createBrowserClient(url, key);
+  return client;
 }

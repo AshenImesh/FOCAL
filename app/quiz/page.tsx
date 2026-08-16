@@ -1,27 +1,23 @@
 import { redirect } from "next/navigation";
-import { QuizRunner } from "./quiz-runner";
 import { createClient } from "@/lib/supabase/server";
-
-export const dynamic = "force-dynamic";
+import QuizPlayer from "@/components/QuizPlayer";
+import type { Profile } from "@/lib/types";
 
 export default async function QuizPage() {
   const supabase = await createClient();
+  if (!supabase) redirect("/login");
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=/quiz");
+  if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("students")
-    .select("id, name")
+  const { data } = await supabase
+    .from("profiles")
+    .select("*")
     .eq("id", user.id)
-    .maybeSingle<{ id: string; name: string }>();
-
+    .maybeSingle();
+  const profile = data as Profile | null;
   if (!profile) redirect("/register");
 
-  return (
-    <div className="view">
-      <QuizRunner userId={profile.id} name={profile.name} />
-    </div>
-  );
+  return <QuizPlayer profileName={profile.full_name || "Student"} profileGrade={profile.grade || 6} />;
 }

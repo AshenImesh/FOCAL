@@ -1,128 +1,213 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Ic } from "../components/icons";
-import { PaperTrendChart, QuizBarChart } from "../components/charts";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDate, gradeOfPct, initials } from "@/lib/constants";
-import type { PaperResult, QuizScore, Student } from "@/lib/types";
+import { PaperTrendChart, QuizTrendChart } from "@/components/StudentCharts";
+import { predict, paperRows, toPct } from "@/lib/predict";
+import { Icon } from "@/components/icons";
+import type { Paper, Profile, QuizScore } from "@/lib/types";
 
-export const dynamic = "force-dynamic";
+function gradeBadge(pct: number) {
+  if (pct >= 75) return { l: "A", c: "badge-a" };
+  if (pct >= 60) return { l: "B", c: "badge-b" };
+  if (pct >= 40) return { l: "C", c: "badge-c" };
+  return { l: "D", c: "badge-d" };
+}
+
+const trendText = {
+  improving: { t: "improving", c: "trend-up", txt: "You're improving" },
+  steady: { t: "steady", c: "trend-steady", txt: "Holding steady" },
+  declining: { t: "declining", c: "trend-down", txt: "Needs a boost" },
+} as const;
 
 export default async function DashboardPage() {
   const supabase = await createClient();
+  if (!supabase) redirect("/login");
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=/dashboard");
+  if (!user) redirect("/login");
 
-  const uid = user.id;
-
-  const { data: profile } = await supabase
-    .from("students")
+  const { data: profileData } = await supabase
+    .from("profiles")
     .select("*")
-    .eq("id", uid)
-    .maybeSingle<Student>();
+    .eq("id", user.id)
+    .maybeSingle();
+  const profile = profileData as Profile | null;
+  if (!profile || !profile.grade) redirect("/register");
 
-  if (!profile) redirect("/register");
+  const approved = profile.status === "approved";
 
-  const { data: results } = await supabase
-    .from("results")
-    .select("*")
-    .eq("student_id", uid)
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true })
-    .returns<PaperResult[]>();
+  const [{ data: papersData }, { data: scoresData }] = await Promise.all([
+    approved
+      ? supabase.from("papers").select("*").eq("student_id", user.id).order("created_at")
+      : Promise.resolve({ data: [] as Paper[] }),
+    supabase.from("quiz_scores").select("*").eq("student_id", user.id).order("created_at"),
+  ]);
 
-  const { data: quizScores } = await supabase
-    .from("quiz_scores")
-    .select("*")
-    .eq("student_id", uid)
-    .order("created_at", { ascending: false })
-    .returns<QuizScore[]>();
+  const papers = paperRows(papersData || []);
+  const scores = (scoresData || []) as QuizScore[];
+  const pred = predict(papers);
 
-  const papers = (results ?? []).map((r) => ({
-    ...r,
-    pct: Math.round((r.marks / r.total) * 100),
-  }));
+  const totalMarks = papers.reduce((s, p) => s + p.marks, 0);
+  const totalMax = papers.reduce((s, p) => s + p.total, 0);
+  const avgPaper = papers.length ? Math.round((totalMarks / totalMax) * 100) : 0;
+  const bestPaper = papers.length ? Math.max(...papers.map((p) => p.pct)) : 0;
+  const bestQuiz = scores.length ? Math.max(...scores.map((s) => s.pct)) : 0;
+  const avgQuiz = scores.length ? Math.round(scores.reduce((s, q) => s + q.pct, 0) / scores.length) : 0;
 
-  if (!profile.approved) {
-    return <PendingView profile={profile} />;
+  // top performers in the student's grade (quiz best score per student)
+  let topPerformers: { name: string; pct: number; isYou: boolean }[] = [];
+  if (profile.grade) {
+    const [qRes, pRes] = await Promise.all([
+      supabase.from("quiz_scores").select("student_id, pct").eq("grade", profile.grade).limit(500),
+      supabase.from("profiles").select("id, full_name").limit(500),
+    ]);
+    const nameOf = new Map<string, string>();
+    ((pRes.data || []) as { id: string; full_name: string | null }[]).forEach((pr) =>
+      nameOf.set(pr.id, pr.full_name || "Student")
+    );
+    const best = new Map<string, number>();
+    ((qRes.data || []) as QuizScore[]).forEach((s) => {
+      const cur = best.get(s.student_id);
+      if (cur == null || s.pct > cur) best.set(s.student_id, s.pct);
+    });
+    topPerformers = [...best.entries()]
+      .map(([sid, pct]) => ({ name: nameOf.get(sid) || "Student", pct, isYou: sid === user.id }))
+      .sort((a, b) => b.pct - a.pct)
+      .slice(0, 5);
   }
 
   return (
-    <div className="view">
+    <div className="wrap" style={{ maxWidth: 900 }}>
       <div className="page-head">
         <span className="eyebrow">My dashboard</span>
-        <h1>
-          {initials(profile.name)}, your results
-        </h1>
+        <h1>Welcome, {profile.full_name?.split(" ")[0]}</h1>
         <p>
-          Grade {profile.grade} · Science · FOCAL Classes ·{" "}
-          <span style={{ color: "var(--faint)" }}>{profile.email}</span>
+          Grade {profile.grade} · Science · FOCAL Classes
         </p>
       </div>
 
-      <StatsBar papers={papers} quizScores={quizScores ?? []} />
-
-      <div className="dash-grid">
-        <div className="card chart-card">
-          <h3>Paper performance & forecast</h3>
-          <div className="sub">
-            Your paper scores over time, with a projected trend for the next
-            papers.
-          </div>
-          {papers.length >= 2 ? (
-            <TrendWithForecast papers={papers} />
-          ) : (
-            <ChartEmpty
-              text="Add at least two paper results to see your trend and forecast."
-              href="/quiz"
-              cta="Take a quiz instead"
-            />
-          )}
-          <div className="legend-inline">
-            <span>
-              <span className="dot" style={{ background: "var(--accent)" }} />
-              Your score
-            </span>
-            <span>
-              <span className="dot" style={{ background: "var(--accent-2)" }} />
-              Forecast
-            </span>
-          </div>
+      {!approved && (
+        <div className={"status-banner " + (profile.status === "rejected" ? "rejected" : "pending")}>
+          <Icon name={profile.status === "rejected" ? "warn" : "clock"} size={20} />
+          <span>
+            {profile.status === "rejected"
+              ? "Your registration was not approved. Please talk to your teacher if this is a mistake."
+              : "Your registration is waiting for approval by the teacher. You can take quizzes and see quiz results now — paper results unlock once you're approved."}
+          </span>
         </div>
+      )}
 
-        <div className="card chart-card">
-          <h3>Quiz history</h3>
-          <div className="sub">Your recent quiz scores at a glance.</div>
-          {(quizScores ?? []).length > 0 ? (
-            <QuizBarChart
-              data={(quizScores ?? [])
-                .slice()
-                .reverse()
-                .slice(-12)
-                .map((s) => ({
-                  label: fmtDate(s.created_at).slice(0, 6),
-                  pct: Math.round(Number(s.pct)),
-                }))}
-            />
-          ) : (
-            <ChartEmpty
-              text="No quizzes taken yet — try one and your scores will appear here."
-              href="/quiz"
-              cta="Take a quiz"
-            />
-          )}
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="n accent">{papers.length ? `${avgPaper}%` : "—"}</div>
+          <div className="l">Paper average</div>
+        </div>
+        <div className="kpi">
+          <div className="n good">{papers.length ? `${bestPaper}%` : "—"}</div>
+          <div className="l">Best paper</div>
+        </div>
+        <div className="kpi">
+          <div className="n">{scores.length}</div>
+          <div className="l">Quizzes taken</div>
+        </div>
+        <div className="kpi">
+          <div className="n accent">{scores.length ? `${bestQuiz}%` : "—"}</div>
+          <div className="l">Best quiz</div>
+        </div>
+        <div className="kpi">
+          <div className="n">{papers.length + scores.length}</div>
+          <div className="l">Total records</div>
         </div>
       </div>
 
-      <div className="dash-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div className="card" style={{ overflow: "hidden" }}>
-          <div style={{ padding: "22px 24px 0" }}>
-            <div className="table-title">Paper breakdown</div>
+      {topPerformers.length > 0 && (
+        <div className="card panel">
+          <div className="panel-head">
+            <div className="panel-title">Grade {profile.grade} — top performers</div>
+            <span className="board-count">quiz best score · rank among your grade</span>
           </div>
-          {papers.length > 0 ? (
-            <div style={{ padding: "0 16px 16px", overflowX: "auto" }}>
+          <div style={{ padding: "16px 20px 20px" }}>
+            <div className="compare-list">
+              {topPerformers.map((p, i) => {
+                const youRow = p.isYou;
+                const rank = i + 1;
+                return (
+                  <div className={"cmp-row" + (youRow ? " you" : "")} key={i}>
+                    <div className={"cmp-rank" + (rank <= 3 ? " r" + rank : "")}>
+                      {rank <= 3 ? ["🥇", "🥈", "🥉"][rank - 1] : "#" + rank}
+                    </div>
+                    <div className="cmp-name">
+                      {p.name}
+                      {youRow && <span className="cmp-you">You</span>}
+                    </div>
+                    <div className="cmp-bar">
+                      <div className="pbar">
+                        <i style={{ width: Math.min(100, p.pct) + "%" }} />
+                      </div>
+                    </div>
+                    <div className="cmp-val">{p.pct}%</div>
+                  </div>
+                );
+              })}
+            </div>
+            {bestQuiz > 0 && (
+              <p className="cmp-note">
+                Your best quiz score is <b style={{ color: "var(--accent)" }}>{bestQuiz}%</b>
+                {topPerformers.length && topPerformers[0] ? (
+                  <>
+                    {" "}
+                    vs the grade leader&apos;s{" "}
+                    <b style={{ color: "var(--accent)" }}>{topPerformers[0].pct}%</b>. Keep
+                    going!
+                  </>
+                ) : null}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {approved && papers.length > 0 && (
+        <>
+          <div className="card panel">
+            <div className="panel-head">
+              <div className="panel-title">Paper performance &amp; prediction</div>
+              {pred && (
+                <span className={"trend-" + trendText[pred.trend].t}>
+                  {trendText[pred.trend].txt}
+                </span>
+              )}
+            </div>
+            <div className="panel-body">
+              <PaperTrendChart
+                data={papers.map((p) => ({ label: p.date || p.paper_name.slice(0, 8), pct: p.pct }))}
+                predicted={pred?.predicted ?? null}
+              />
+              {pred && (
+                <div className="pred-card" style={{ marginTop: 18 }}>
+                  <div className="pc-big">{pred.predicted}%</div>
+                  <div className="pc-txt">
+                    <b>Projected next paper.</b> Based on your {papers.length} papers so far, you&apos;re
+                    likely to score around <b>{pred.predicted}%</b> next time —{" "}
+                    <span className={"trend-" + trendText[pred.trend].t}>
+                      {trendText[pred.trend].txt.toLowerCase()}
+                    </span>
+                    {pred.trend === "improving" ? " — keep it up!" : pred.trend === "declining" ? " — a little revision will fix this." : " — consistent work pays off."}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="card panel">
+            <div className="panel-head">
+              <div className="panel-title">Paper history</div>
+              <span className="board-count">
+                <b>{papers.length}</b> paper{papers.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <div style={{ padding: "12px 16px 18px", overflowX: "auto" }}>
               <table>
                 <thead>
                   <tr>
@@ -135,19 +220,17 @@ export default async function DashboardPage() {
                 </thead>
                 <tbody>
                   {papers.map((p) => {
-                    const g = gradeOfPct(p.pct);
+                    const g = gradeBadge(p.pct);
                     return (
                       <tr key={p.id}>
-                        <td>{p.paper}</td>
-                        <td style={{ color: "var(--faint)" }}>{p.date || fmtDate(p.created_at)}</td>
+                        <td>{p.paper_name}</td>
+                        <td>{p.date || "—"}</td>
                         <td>
                           {p.marks} / {p.total}
                         </td>
-                        <td style={{ fontWeight: 700, color: "var(--ink)" }}>
-                          {p.pct}%
-                        </td>
+                        <td>{p.pct}%</td>
                         <td>
-                          <span className={`badge ${g.cls}`}>{g.letter}</span>
+                          <span className={"badge " + g.c}>{g.l}</span>
                         </td>
                       </tr>
                     );
@@ -155,205 +238,74 @@ export default async function DashboardPage() {
                 </tbody>
               </table>
             </div>
-          ) : (
-            <EmptyMini text="No paper results uploaded yet — they will appear here once your teacher posts them." />
-          )}
-        </div>
-
-        <div className="card" style={{ overflow: "hidden" }}>
-          <div style={{ padding: "22px 24px 0" }}>
-            <div className="table-title">Quiz history</div>
           </div>
-          {(quizScores ?? []).length > 0 ? (
-            <div style={{ padding: "0 16px 16px", overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Grade</th>
-                    <th>Score</th>
-                    <th>%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(quizScores ?? []).slice(0, 12).map((s) => (
-                    <tr key={s.id}>
-                      <td>{fmtDate(s.created_at)}</td>
-                      <td style={{ color: "var(--faint)" }}>Grade {s.grade}</td>
-                      <td>
-                        {s.score} / {s.total}
-                      </td>
-                      <td style={{ fontWeight: 700, color: "var(--ink)" }}>
-                        {Math.round(Number(s.pct))}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <EmptyMini text="Quizzes you take will show up here with dates and scores." />
-          )}
+        </>
+      )}
+
+      {approved && papers.length === 0 && (
+        <div className="card empty">
+          <div className="ic">
+            <Icon name="bars" size={28} />
+          </div>
+          <h3>No papers on record yet</h3>
+          <p>Your teacher will upload your paper results here after each test.</p>
         </div>
-      </div>
+      )}
 
-      <div style={{ display: "flex", gap: 12, marginTop: 22, flexWrap: "wrap" }}>
-        <Link className="btn btn-primary" href="/quiz">
-          <Ic.bolt size={16} /> Take a quiz
-        </Link>
-        <Link className="btn btn-ghost" href="/board">
-          <Ic.trophy size={16} /> View leaderboard
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function StatsBar({
-  papers,
-  quizScores,
-}: {
-  papers: { pct: number }[];
-  quizScores: QuizScore[];
-}) {
-  const totalMarks = papers.reduce((s, p) => s + p.pct, 0);
-  const avg = papers.length ? Math.round(totalMarks / papers.length) : 0;
-  const best = papers.length ? Math.max(...papers.map((p) => p.pct)) : 0;
-  const quizBest = quizScores.length
-    ? Math.round(Math.max(...quizScores.map((s) => Number(s.pct))))
-    : 0;
-
-  const trend =
-    papers.length >= 3 ? trendInfo(papers.map((p) => p.pct)) : null;
-
-  return (
-    <div className="dash-grid">
-      <div className="card stat-card">
-        <div className="ic">
-          <Ic.bars size={18} />
-        </div>
-        <div className="n">{papers.length}</div>
-        <div className="l">Papers on record</div>
-      </div>
-      <div className="card stat-card">
-        <div className="ic">
-          <Ic.chart size={18} />
-        </div>
-        <div className="n accent">{avg}%</div>
-        <div className="l">Average score</div>
-        {trend && (
-          <span className={`trend ${trend.dir}`}>
-            {trend.dir === "up" ? "↑" : "↓"} {trend.delta > 0 ? "+" : ""}
-            {trend.delta}%
+      <div className="card panel">
+        <div className="panel-head">
+          <div className="panel-title">Quiz history</div>
+          <span className="board-count">
+            <b>{scores.length}</b> attempt{scores.length !== 1 ? "s" : ""} · best {avgQuiz}%
           </span>
+        </div>
+        {scores.length > 0 ? (
+          <div className="panel-body">
+            <QuizTrendChart
+              data={scores.map((s, i) => ({ label: "Q" + (i + 1), pct: s.pct }))}
+            />
+            <table style={{ marginTop: 18 }}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Grade</th>
+                  <th>Score</th>
+                  <th>%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...scores].reverse().map((s) => (
+                  <tr key={s.id}>
+                    <td>{new Date(s.created_at).toLocaleDateString("en-GB")}</td>
+                    <td>Grade {s.grade}</td>
+                    <td>
+                      {s.score} / {s.total}
+                    </td>
+                    <td>{s.pct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty">
+            <div className="ic">
+              <Icon name="bolt" size={28} />
+            </div>
+            <h3>No quizzes yet</h3>
+            <p>Take your first quiz — it takes about five minutes.</p>
+            <Link className="btn btn-primary" href="/quiz" style={{ marginTop: 20 }}>
+              <Icon name="bolt" size={17} /> Take a quiz
+            </Link>
+          </div>
         )}
       </div>
-      <div className="card stat-card">
-        <div className="ic">
-          <Ic.trophy size={18} />
+
+      {!approved && (
+        <div className="hint">
+          <b>Teacher:</b> paper results appear here once your registration is approved.
         </div>
-        <div className="n good">{best}%</div>
-        <div className="l">Best paper</div>
-      </div>
-      <div className="card stat-card">
-        <div className="ic">
-          <Ic.bolt size={18} />
-        </div>
-        <div className="n warn">{quizBest}%</div>
-        <div className="l">Best quiz · {quizScores.length} taken</div>
-      </div>
+      )}
     </div>
-  );
-}
-
-function trendInfo(values: number[]): { dir: "up" | "down"; delta: number } {
-  const n = values.length;
-  const first = values[0];
-  const last = values[n - 1];
-  const delta = last - first;
-  return { dir: delta >= 0 ? "up" : "down", delta: Math.abs(delta) };
-}
-
-function TrendWithForecast({ papers }: { papers: { paper: string; pct: number }[] }) {
-  const actuals = papers.map((p, i) => ({
-    label: p.paper.length > 14 ? p.paper.slice(0, 14) + "…" : p.paper,
-    pct: p.pct,
-  }));
-  const forecasts = linearForecast(papers.map((p) => p.pct), 2).map((v, i) => ({
-    label: `Next #${i + 1}`,
-    pct: v,
-  }));
-
-  return <PaperTrendChart actuals={actuals} forecasts={forecasts} />;
-}
-
-function linearForecast(values: number[], steps: number): number[] {
-  const n = values.length;
-  if (n < 2) return values.map(() => 50);
-  let sx = 0,
-    sy = 0,
-    sxx = 0,
-    sxy = 0;
-  values.forEach((y, x) => {
-    sx += x;
-    sy += y;
-    sxx += x * x;
-    sxy += x * y;
-  });
-  const b = (n * sxy - sx * sy) / (n * sxx - sx * sx || 1);
-  const a = (sy - b * sx) / n;
-  const out: number[] = [];
-  for (let i = 1; i <= steps; i++) {
-    const v = a + b * (n - 1 + i);
-    out.push(Math.round(Math.max(0, Math.min(100, v))));
-  }
-  return out;
-}
-
-function PendingView({ profile }: { profile: Student }) {
-  return (
-    <div className="view">
-      <div className="page-head center">
-        <span className="eyebrow">Welcome to FOCAL</span>
-        <h1>Hi {initials(profile.name)}</h1>
-      </div>
-      <div className="card pending-card">
-        <div className="ic">
-          <Ic.clock size={28} />
-        </div>
-        <h3>Your registration is pending approval</h3>
-        <p>
-          Thanks for signing up, {profile.name}. Your teacher will confirm your
-          registration shortly. Once approved, your paper results will unlock
-          here.
-        </p>
-        <Link className="btn btn-primary" href="/quiz">
-          <Ic.bolt size={16} /> Take a quiz while you wait
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function ChartEmpty({ text, href, cta }: { text: string; href: string; cta: string }) {
-  return (
-    <div className="empty" style={{ padding: "28px 16px" }}>
-      <div className="ic">
-        <Ic.chart size={26} />
-      </div>
-      <h3 style={{ fontSize: "1rem" }}>Nothing to chart yet</h3>
-      <p style={{ fontSize: ".82rem" }}>{text}</p>
-      <Link className="btn btn-soft btn-sm" href={href} style={{ marginTop: 16 }}>
-        {cta}
-      </Link>
-    </div>
-  );
-}
-
-function EmptyMini({ text }: { text: string }) {
-  return (
-    <p style={{ fontSize: ".84rem", color: "var(--faint)", padding: "12px 24px 24px" }}>
-      {text}
-    </p>
   );
 }
