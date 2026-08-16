@@ -64,6 +64,18 @@ create table if not exists public.admins (
   created_at timestamptz not null default now()
 );
 
+-- ── User change appeals (email / grade, approved by admin) ──────
+create table if not exists public.user_requests (
+  id              bigint generated always as identity primary key,
+  user_id         uuid not null references public.profiles(id) on delete cascade,
+  kind            text not null check (kind in ('email','grade')),
+  current_value   text not null,
+  requested_value text not null,
+  status          text not null default 'pending' check (status in ('pending','approved','rejected')),
+  created_at      timestamptz not null default now(),
+  resolved_at     timestamptz
+);
+
 -- ── Notices (site-wide banner, created by the admin) ─────────────
 create table if not exists public.notices (
   id         bigint generated always as identity primary key,
@@ -82,6 +94,7 @@ alter table public.quiz_scores    enable row level security;
 alter table public.quiz_questions enable row level security;
 alter table public.teachers       enable row level security;
 alter table public.notices        enable row level security;
+alter table public.user_requests  enable row level security;
 
 -- Helpers (security definer, so policies can use them safely)
 create or replace function public.is_admin()
@@ -203,6 +216,18 @@ create policy "notices_delete_admin" on public.notices
 -- admins: no policies — only the service-role key (server-side) can
 -- read or write this table.
 
+-- user_requests (email / grade change appeals):
+--  · a user may read and create their own requests
+--  · admins may read all and update the status (approve / reject)
+create policy "user_requests_select" on public.user_requests
+  for select using (auth.uid() = user_id or is_admin());
+
+create policy "user_requests_insert_own" on public.user_requests
+  for insert with check (auth.uid() = user_id);
+
+create policy "user_requests_update_admin" on public.user_requests
+  for update using (is_admin());
+
 -- ════════════════════════════════════════════════════════════════
 --  Indexes
 -- ════════════════════════════════════════════════════════════════
@@ -210,6 +235,8 @@ create index if not exists papers_student_idx      on public.papers(student_id);
 create index if not exists quiz_scores_student_idx on public.quiz_scores(student_id);
 create index if not exists quiz_questions_grade_idx on public.quiz_questions(grade);
 create index if not exists notices_active_idx      on public.notices(active);
+create index if not exists user_requests_user_idx  on public.user_requests(user_id);
+create index if not exists user_requests_status_idx on public.user_requests(status);
 
 
 -- ════════════════════════════════════════════════════════════════

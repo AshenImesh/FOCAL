@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseQuizMarkdown } from "@/lib/quiz-markdown";
-import type { Profile } from "@/lib/types";
+import type { Profile, UserRequest } from "@/lib/types";
 
 /* ── helpers ─────────────────────────────────────────── */
 
@@ -456,6 +456,106 @@ export async function clearQuizGrade(formData: FormData) {
   const { error } = await admin.from("quiz_questions").delete().eq("grade", grade);
   if (error) return { error: error.message };
   revalidatePath("/quiz");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/* ── user change appeals (email / grade) ─────────────── */
+
+export async function submitChangeRequest(data: { kind: string; value: string }) {
+  const profile = await requireProfile();
+  const supabase = await createClient();
+  if (!supabase) return { error: "Not configured" };
+  const kind = data.kind === "grade" ? "grade" : "email";
+  const value = String(data.value || "").trim();
+  if (kind === "email") {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+      return { error: "Enter a valid email address." };
+  } else {
+    const g = Number(value);
+    if (!g || g < 6 || g > 11) return { error: "Pick a valid grade (6–11)." };
+  }
+
+  const { data: dup } = await supabase
+    .from("user_requests")
+    .select("id")
+    .eq("user_id", profile.id)
+    .eq("kind", kind)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (dup) return { error: "You already have a pending request for this change." };
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const current =
+    kind === "email" ? user?.email || "" : profile.grade ? String(profile.grade) : "—";
+  if (kind === "email" && !current) return { error: "Couldn't read your current email." };
+
+  const { error } = await supabase.from("user_requests").insert({
+    user_id: profile.id,
+    kind,
+    current_value: current,
+    requested_value: value,
+  });
+  if (error) return { error: error.message };
+  revalidatePath("/profile");
+  return { ok: true };
+}
+
+export async function listUserRequests() {
+  await requireAdmin();
+  const supabase = await createClient();
+  if (!supabase) return { error: "Not configured" };
+  const { data } = await supabase
+    .from("user_requests")
+    .select("id, user_id, kind, current_value, requested_value, status, created_at, resolved_at")
+    .order("created_at", { ascending: false });
+  return { requests: (data || []) as UserRequest[] };
+}
+
+export async function resolveUserRequest(formData: FormData) {
+  await requireAdmin();
+  const supabase = await createClient();
+  const admin = createAdminClient();
+  if (!supabase || !admin) return { error: "Not configured" };
+  const id = Number(formData.get("id"));
+  const action = String(formData.get("action") || "");
+  if (!id || (action !== "approve" && action !== "reject"))
+    return { error: "Bad request." };
+  const { data: req } = await supabase
+    .from("user_requests")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (!req) return { error: "Request not found." };
+  if (req.status !== "pending") return { error: "This request was already resolved." };
+
+  if (action === "approve") {
+    if (req.kind === "email") {
+      const { error: uErr } = await admin.auth.admin.updateUserById(req.user_id, {
+        email: req.requested_value,
+      });
+      if (uErr) return { error: "Email update failed: " + uErr.message };
+    } else {
+      const g = Number(req.requested_value);
+      const { error: pErr } = await supabase
+        .from("profiles")
+        .update({ grade: g })
+        .eq("id", req.user_id);
+      if (pErr) return { error: pErr.message };
+    }
+  }
+
+  const { error } = await supabase
+    .from("user_requests")
+    .update({
+      status: action === "approve" ? "approved" : "rejected",
+      resolved_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/profile");
   revalidatePath("/admin");
   return { ok: true };
 }

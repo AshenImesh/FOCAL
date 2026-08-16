@@ -48,6 +48,17 @@ export interface Notice {
   created_at: string;
 }
 
+export interface UserRequest {
+  id: number;
+  user_id: string;
+  kind: "email" | "grade";
+  current_value: string;
+  requested_value: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+  resolved_at: string | null;
+}
+
 export interface Teacher {
   id: string;
   full_name: string;

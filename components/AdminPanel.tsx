@@ -18,17 +18,20 @@ import {
   listAdmins,
   addAdminEmail,
   removeAdminEmail,
+  listUserRequests,
+  resolveUserRequest,
 } from "@/lib/actions";
 import { Icon } from "@/components/icons";
 import LogoutButton from "@/components/LogoutButton";
 import { buildQuizTemplate } from "@/lib/quiz-markdown";
-import type { Notice, Paper, Profile, QuizScore, Teacher } from "@/lib/types";
+import type { Notice, Paper, Profile, QuizScore, Teacher, UserRequest } from "@/lib/types";
 
-type Tab = "overview" | "requests" | "students" | "teachers" | "quizbank" | "admins" | "notices";
+type Tab = "overview" | "requests" | "appeals" | "students" | "teachers" | "quizbank" | "admins" | "notices";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "requests", label: "Registration requests" },
+  { id: "appeals", label: "User changes" },
   { id: "students", label: "Students" },
   { id: "teachers", label: "Teachers" },
   { id: "admins", label: "Admins" },
@@ -79,6 +82,8 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
   const [qCounts, setQCounts] = useState<Record<string, number>>({});
   const [admins, setAdmins] = useState<{ id: string; email: string; created_at: string }[]>([]);
   const [aForm, setAForm] = useState("");
+  const [appeals, setAppeals] = useState<UserRequest[]>([]);
+  const [appealNames, setAppealNames] = useState<Record<string, string>>({});
 
   const flash = (m: string, isErr = false) => {
     setMsg(isErr ? "" : m);
@@ -242,6 +247,29 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
     if (res && "admins" in res && res.admins) setAdmins(res.admins);
   }
 
+  async function doLoadAppeals() {
+    const res = await listUserRequests();
+    if (res && "requests" in res && res.requests) {
+      setAppeals(res.requests);
+      const names: Record<string, string> = {};
+      students.forEach((s) => {
+        names[s.id] = s.full_name || "Student";
+      });
+      setAppealNames(names);
+    }
+  }
+
+  async function doResolveAppeal(id: number, action: "approve" | "reject") {
+    const fd = new FormData();
+    fd.set("id", String(id));
+    fd.set("action", action);
+    const res = await resolveUserRequest(fd);
+    if (res && "error" in res && res.error) flash(res.error, true);
+    else flash(action === "approve" ? "Change applied — the student keeps all their progress." : "Request rejected.");
+    doLoadAppeals();
+    router.refresh();
+  }
+
   async function doAddAdmin(e: React.FormEvent) {
     e.preventDefault();
     const fd = new FormData();
@@ -313,6 +341,7 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
             onClick={() => {
               setTab(t.id);
               if (t.id === "admins") doLoadAdmins();
+              if (t.id === "appeals") doLoadAppeals();
             }}
           >
             {t.label}
@@ -397,6 +426,71 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
                         Reject
                       </button>
                     </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {tab === "appeals" && (
+            <div className="card admin-sec" style={{ padding: "14px 20px" }}>
+              <div className="sec-title" style={{ marginBottom: 6 }}>
+                <span className="dot" /> Change requests ({appeals.filter((r) => r.status === "pending").length} pending)
+              </div>
+              {appeals.length === 0 ? (
+                <p style={{ fontSize: ".86rem", color: "var(--faint)", padding: "10px 0" }}>
+                  No change requests yet. Students appeal here when they want a new Gmail or grade.
+                </p>
+              ) : (
+                appeals.map((r) => (
+                  <div className="list-row" key={r.id}>
+                    <div className="who">
+                      <div className="mini">{initials(appealNames[r.user_id] || "?")}</div>
+                      <div>
+                        <div className="nm">
+                          {appealNames[r.user_id] || "Student"}
+                          {r.status === "pending" ? (
+                            <span className="pill pill-wait" style={{ marginLeft: 8 }}>
+                              <span className="dot" /> Pending
+                            </span>
+                          ) : r.status === "approved" ? (
+                            <span className="pill pill-ok" style={{ marginLeft: 8 }}>
+                              <span className="dot" /> Approved
+                            </span>
+                          ) : (
+                            <span className="pill pill-bad" style={{ marginLeft: 8 }}>
+                              <span className="dot" /> Rejected
+                            </span>
+                          )}
+                        </div>
+                        <div className="sub">
+                          {r.kind === "email" ? (
+                            <>
+                              Change Gmail: <b>{r.current_value}</b> → <b>{r.requested_value}</b>
+                            </>
+                          ) : (
+                            <>
+                              Change grade: <b>{r.current_value}</b> → <b>{r.requested_value}</b>
+                            </>
+                          )}{" "}
+                          · requested {new Date(r.created_at).toLocaleDateString("en-GB")}
+                        </div>
+                      </div>
+                    </div>
+                    {r.status === "pending" ? (
+                      <div className="acts">
+                        <button className="btn btn-primary btn-sm" onClick={() => doResolveAppeal(r.id, "approve")}>
+                          <Icon name="check" size={14} /> Approve
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={() => doResolveAppeal(r.id, "reject")}>
+                          Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="acts" style={{ fontSize: ".78rem", color: "var(--faint)" }}>
+                        {r.status === "approved" ? "Applied" : "Declined"}
+                      </span>
+                    )}
                   </div>
                 ))
               )}

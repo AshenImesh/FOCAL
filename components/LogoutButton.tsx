@@ -6,7 +6,7 @@ import { logoutUser } from "@/lib/actions";
 import { Icon } from "@/components/icons";
 
 export default function LogoutButton({
-  label = "Sign out",
+  label = "",
   className = "icon-btn",
   title = "Log out",
   style,
@@ -32,7 +32,8 @@ export default function LogoutButton({
   return (
     <>
       <button className={className} title={title} style={style} onClick={() => setOpen(true)}>
-        <Icon name="logout" size={15} /> {label}
+        <Icon name="logout" size={15} />
+        {label && <span>{label}</span>}
       </button>
 
       {open && (

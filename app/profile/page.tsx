@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ProfileForm from "@/components/ProfileForm";
-import type { Profile } from "@/lib/types";
+import type { Profile, UserRequest } from "@/lib/types";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -11,12 +11,11 @@ export default async function ProfilePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
-  const profile = data as Profile | null;
+  const [{ data: profileData }, { data: reqData }] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+    supabase.from("user_requests").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+  ]);
+  const profile = profileData as Profile | null;
   if (!profile) redirect("/register");
 
   return (
@@ -27,7 +26,11 @@ export default async function ProfilePage() {
         <p>Your name appears on results and the leaderboard — keep it up to date.</p>
       </div>
       <div className="card" style={{ padding: 28 }}>
-        <ProfileForm profile={profile} email={user.email || ""} />
+        <ProfileForm
+          profile={profile}
+          email={user.email || ""}
+          requests={(reqData || []) as UserRequest[]}
+        />
       </div>
     </div>
   );
