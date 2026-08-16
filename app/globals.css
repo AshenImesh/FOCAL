@@ -556,6 +556,10 @@ tbody tr:hover td{background:var(--surface-2)}
 /* ── Admin / Teacher panels ─────────────────────────── */
 .admin-wrap{max-width:900px;margin:0 auto}
 .panel-tabs{display:flex;gap:4px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:4px;margin-bottom:24px;width:fit-content;max-width:100%}
+.tab-badge{
+  background:var(--bad);color:#fff;border-radius:999px;
+  font-size:.66rem;line-height:1;padding:3px 7px;margin-left:6px;vertical-align:2px;
+}
 .admin-sec{margin-bottom:26px}
 .admin-sec > .sec-title{font-family:var(--font-d);font-weight:700;font-size:1.02rem;margin-bottom:14px;display:flex;align-items:center;gap:10px}
 .admin-sec > .sec-title .dot{width:8px;height:8px;border-radius:50%;background:var(--grad);display:inline-block}

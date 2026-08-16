@@ -8,6 +8,7 @@ import bcrypt from "bcryptjs";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseQuizMarkdown } from "@/lib/quiz-markdown";
+import { parseResultsText } from "@/lib/results-markdown";
 import type { Profile, UserRequest, ContactRequest } from "@/lib/types";
 
 /* ── helpers ─────────────────────────────────────────── */
@@ -274,6 +275,93 @@ export async function deletePaper(id: string) {
   revalidatePath("/board");
   revalidatePath("/teacher");
   revalidatePath("/admin");
+}
+
+export async function updatePaper(formData: FormData) {
+  await requireStaff();
+  const supabase = await createClient();
+  if (!supabase) return { error: "Not configured" };
+  const id = String(formData.get("id") || "");
+  const paper_name = String(formData.get("paper_name") || "").trim();
+  const marks = Number(formData.get("marks"));
+  const total = Number(formData.get("total"));
+  const date = String(formData.get("date") || "").trim();
+  if (!id || !paper_name || !marks) return { error: "Fill all fields." };
+  if (marks > total) return { error: "Marks cannot exceed the total." };
+
+  const { error } = await supabase
+    .from("papers")
+    .update({ paper_name, marks, total, date: date || null })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/dashboard");
+  revalidatePath("/board");
+  revalidatePath("/teacher");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+export async function uploadPaperResults(formData: FormData) {
+  await requireAdmin();
+  const supabase = await createClient();
+  if (!supabase) return { error: "Not configured" };
+  const text = String(formData.get("text") || "");
+  const { rows, errors } = parseResultsText(text);
+  if (!rows.length) return { error: errors[0] || "No valid rows found. Check the format." };
+
+  const grades = [...new Set(rows.map((r) => r.grade))];
+  const { data: students } = await supabase
+    .from("profiles")
+    .select("id, full_name, phone, grade")
+    .eq("role", "student")
+    .in("grade", grades);
+  const list = (students || []) as { id: string; full_name: string | null; phone: string | null; grade: number }[];
+
+  const skipped: { line: number; reason: string }[] = errors.map((e) => ({ line: 0, reason: e }));
+  const toInsert: { student_id: string; paper_name: string; marks: number; total: number; date: string | null }[] = [];
+  const toUpdate: { id: string; marks: number; total: number }[] = [];
+
+  const ids = list.map((s) => s.id);
+  const { data: existing } = ids.length
+    ? await supabase.from("papers").select("id, student_id, paper_name").in("student_id", ids)
+    : { data: [] };
+  const existingMap = new Map<string, { id: string }>();
+  ((existing || []) as { id: string; student_id: string; paper_name: string }[]).forEach((p) => {
+    existingMap.set(`${p.student_id}::${p.paper_name.trim().toLowerCase()}`, p);
+  });
+
+  for (const row of rows) {
+    const digits = row.name.replace(/\D/g, "");
+    let student = list.find(
+      (s) =>
+        s.grade === row.grade &&
+        (s.full_name && s.full_name.trim().toLowerCase() === row.name.toLowerCase() ||
+          (digits && s.phone && s.phone.replace(/\D/g, "") === digits))
+    );
+    if (!student) {
+      skipped.push({ line: row.line, reason: `No student named "${row.name}" in Grade ${row.grade}.` });
+      continue;
+    }
+    const key = `${student.id}::${row.paper.trim().toLowerCase()}`;
+    const hit = existingMap.get(key);
+    if (hit) toUpdate.push({ id: hit.id, marks: row.marks, total: row.total });
+    else toInsert.push({ student_id: student.id, paper_name: row.paper, marks: row.marks, total: row.total, date: null });
+  }
+
+  if (toInsert.length) {
+    const { error } = await supabase.from("papers").insert(toInsert);
+    if (error) return { error: error.message };
+  }
+  for (const u of toUpdate) {
+    const { error } = await supabase.from("papers").update({ marks: u.marks, total: u.total }).eq("id", u.id);
+    if (error) return { error: error.message };
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/board");
+  revalidatePath("/teacher");
+  revalidatePath("/admin");
+  return { ok: true, inserted: toInsert.length, updated: toUpdate.length, skipped };
 }
 
 /* ── admin: students ─────────────────────────────────── */

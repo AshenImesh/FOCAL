@@ -15,6 +15,9 @@ import {
   deleteNotice,
   uploadQuizBank,
   clearQuizGrade,
+  uploadPaperResults,
+  updatePaper,
+  deletePaper,
   listAdmins,
   addAdminEmail,
   removeAdminEmail,
@@ -26,9 +29,10 @@ import {
 import { Icon } from "@/components/icons";
 import LogoutButton from "@/components/LogoutButton";
 import { buildQuizTemplate } from "@/lib/quiz-markdown";
+import { buildResultsTemplate } from "@/lib/results-markdown";
 import type { ContactRequest, Notice, Paper, Profile, QuizScore, Teacher, UserRequest } from "@/lib/types";
 
-type Tab = "overview" | "requests" | "appeals" | "contacts" | "students" | "teachers" | "quizbank" | "admins" | "notices";
+type Tab = "overview" | "requests" | "appeals" | "contacts" | "students" | "teachers" | "quizbank" | "results" | "admins" | "notices";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -39,6 +43,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "teachers", label: "Teachers" },
   { id: "admins", label: "Admins" },
   { id: "quizbank", label: "Quiz bank" },
+  { id: "results", label: "Results" },
   { id: "notices", label: "Notices" },
 ];
 
@@ -88,6 +93,10 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
   const [appeals, setAppeals] = useState<UserRequest[]>([]);
   const [appealNames, setAppealNames] = useState<Record<string, string>>({});
   const [contacts, setContacts] = useState<ContactRequest[]>([]);
+  const [rMarkdown, setRMarkdown] = useState(buildResultsTemplate());
+  const [rGrade, setRGrade] = useState("all");
+  const [pEdit, setPEdit] = useState<string | null>(null);
+  const [pEditForm, setPEditForm] = useState({ paper_name: "", marks: "", total: "", date: "" });
 
   const flash = (m: string, isErr = false) => {
     setMsg(isErr ? "" : m);
@@ -118,6 +127,16 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
       counts[r.grade] = (counts[r.grade] || 0) + 1;
     });
     setQCounts(counts);
+    const [ar, cr] = await Promise.all([listUserRequests(), listContactRequests()]);
+    if (ar && "requests" in ar && ar.requests) {
+      setAppeals(ar.requests);
+      const names: Record<string, string> = {};
+      ((p.data || []) as Profile[]).forEach((s) => {
+        names[s.id] = s.full_name || "Student";
+      });
+      setAppealNames(names);
+    }
+    if (cr && "requests" in cr && cr.requests) setContacts(cr.requests);
     setLoaded(true);
   }, [supabase]);
 
@@ -287,6 +306,53 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
     doLoadContacts();
   }
 
+  async function doUploadResults(e: React.FormEvent) {
+    e.preventDefault();
+    const fd = new FormData();
+    fd.set("text", rMarkdown);
+    const res = await uploadPaperResults(fd);
+    if (res && "error" in res && res.error) flash(res.error, true);
+    else if ("inserted" in res) {
+      const skipped = (res.skipped || []).length;
+      flash(
+        `Uploaded ${res.inserted} new + updated ${res.updated} result${skipped ? `, skipped ${skipped} line(s)` : ""}.`
+      );
+      if (skipped && res.skipped && res.skipped.length) {
+        setErr(
+          res.skipped
+            .map((s) => (s.line ? `Line ${s.line}: ${s.reason}` : s.reason))
+            .join(" · ")
+        );
+      }
+      setRMarkdown(buildResultsTemplate());
+    }
+    load();
+    router.refresh();
+  }
+
+  async function doUpdatePaper(id: string) {
+    const fd = new FormData();
+    fd.set("id", id);
+    fd.set("paper_name", pEditForm.paper_name);
+    fd.set("marks", pEditForm.marks);
+    fd.set("total", pEditForm.total);
+    fd.set("date", pEditForm.date);
+    const res = await updatePaper(fd);
+    if (res && "error" in res && res.error) flash(res.error, true);
+    else flash("Result updated.");
+    setPEdit(null);
+    load();
+    router.refresh();
+  }
+
+  async function doDeletePaper(id: string) {
+    if (!confirm("Delete this result? This cannot be undone.")) return;
+    await deletePaper(id);
+    flash("Result deleted.");
+    load();
+    router.refresh();
+  }
+
   async function doAddAdmin(e: React.FormEvent) {
     e.preventDefault();
     const fd = new FormData();
@@ -340,6 +406,14 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
     (s) => s.role === "student" && (gradeFilter === "all" || String(s.grade) === gradeFilter)
   );
 
+  const sortedPapers = [...papers]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .filter((p) => {
+      if (rGrade === "all") return true;
+      const stu = students.find((s) => s.id === p.student_id);
+      return String(stu?.grade) === rGrade;
+    });
+
   return (
     <div className="admin-wrap">
       <div className="page-head">
@@ -363,11 +437,11 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
             }}
           >
             {t.label}
-            {t.id === "requests" && pending.length > 0 && (
-              <span style={{ background: "var(--bad)", color: "#fff", borderRadius: 999, fontSize: ".66rem", padding: "1px 7px" }}>
-                {pending.length}
-              </span>
+            {t.id === "requests" && pending.length > 0 && <span className="tab-badge">{pending.length}</span>}
+            {t.id === "appeals" && appeals.filter((r) => r.status === "pending").length > 0 && (
+              <span className="tab-badge">{appeals.filter((r) => r.status === "pending").length}</span>
             )}
+            {t.id === "contacts" && contacts.length > 0 && <span className="tab-badge">{contacts.length}</span>}
           </button>
         ))}
       </div>
@@ -858,6 +932,144 @@ export default function AdminPanel({ profile }: { profile: Profile }) {
                       </span>
                     ))}
                   </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {tab === "results" && (
+            <>
+              <div className="card admin-sec" style={{ padding: 26 }}>
+                <div className="sec-title">
+                  <span className="dot" /> Bulk upload paper results
+                </div>
+                <p style={{ fontSize: ".84rem", color: "var(--muted)", marginBottom: 16 }}>
+                  Paste one result per line: <b>Grade, Student name, Paper name, Marks, Total</b>.
+                  Total is optional (defaults to 100). Lines starting with <b>#</b> are ignored.
+                  Re-uploading a paper for the same student simply updates it — history is never
+                  wiped, so it is safe to upload term by term.
+                </p>
+                <form onSubmit={doUploadResults}>
+                  <div className="field">
+                    <label>Results (paste below)</label>
+                    <textarea
+                      className="input"
+                      value={rMarkdown}
+                      onChange={(e) => setRMarkdown(e.target.value)}
+                      style={{ minHeight: 220, fontFamily: "var(--font-b)" }}
+                      required
+                    />
+                  </div>
+                  <button className="btn btn-primary">
+                    <Icon name="plus" size={16} /> Upload results
+                  </button>
+                </form>
+              </div>
+
+              <div className="card admin-sec" style={{ padding: "14px 20px" }}>
+                <div className="sec-title" style={{ marginBottom: 10 }}>
+                  <span className="dot" /> Recent paper results
+                </div>
+                <div className="filter-row" style={{ marginBottom: 10 }}>
+                  <span className="f-label">Grade</span>
+                  <button className={"chip" + (rGrade === "all" ? " active" : "")} onClick={() => setRGrade("all")}>
+                    All
+                  </button>
+                  {["6", "7", "8", "9", "10", "11"].map((g) => (
+                    <button key={g} className={"chip" + (rGrade === g ? " active" : "")} onClick={() => setRGrade(g)}>
+                      Grade {g}
+                    </button>
+                  ))}
+                </div>
+                {sortedPapers.length === 0 ? (
+                  <p style={{ fontSize: ".86rem", color: "var(--faint)", padding: "10px 0" }}>
+                    No results in this filter. Use the form above to upload marks.
+                  </p>
+                ) : (
+                  sortedPapers.map((p) => {
+                    const stu = students.find((s) => s.id === p.student_id);
+                    return (
+                      <div className="list-row" key={p.id} style={{ alignItems: "flex-start" }}>
+                        <div className="who" style={{ flex: 1 }}>
+                          <div className="mini">{initials(stu?.full_name || "?")}</div>
+                          <div style={{ flex: 1 }}>
+                            {pEdit === p.id ? (
+                              <div className="grid-2" style={{ gap: 8 }}>
+                                <input
+                                  className="input"
+                                  value={pEditForm.paper_name}
+                                  onChange={(e) => setPEditForm({ ...pEditForm, paper_name: e.target.value })}
+                                  placeholder="Paper name"
+                                  style={{ padding: 8, fontSize: ".85rem" }}
+                                />
+                                <input
+                                  className="input"
+                                  value={pEditForm.marks}
+                                  onChange={(e) => setPEditForm({ ...pEditForm, marks: e.target.value })}
+                                  placeholder="Marks"
+                                  type="number"
+                                  style={{ padding: 8, fontSize: ".85rem" }}
+                                />
+                                <input
+                                  className="input"
+                                  value={pEditForm.total}
+                                  onChange={(e) => setPEditForm({ ...pEditForm, total: e.target.value })}
+                                  placeholder="Total"
+                                  type="number"
+                                  style={{ padding: 8, fontSize: ".85rem" }}
+                                />
+                                <input
+                                  className="input"
+                                  value={pEditForm.date}
+                                  onChange={(e) => setPEditForm({ ...pEditForm, date: e.target.value })}
+                                  placeholder="Date (optional)"
+                                  style={{ padding: 8, fontSize: ".85rem" }}
+                                />
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <button className="btn btn-primary btn-sm" onClick={() => doUpdatePaper(p.id)}>
+                                    Save
+                                  </button>
+                                  <button className="btn btn-ghost btn-sm" onClick={() => setPEdit(null)}>
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="nm">
+                                  {stu?.full_name || "Student"} · Grade {stu?.grade ?? "?"}
+                                </div>
+                                <div className="sub">
+                                  {p.paper_name} · <b style={{ color: "var(--accent)" }}>{p.marks}/{p.total}</b>
+                                  {p.date ? ` · ${p.date}` : ""}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="acts">
+                          <button
+                            className="icon-btn ok"
+                            title="Edit"
+                            onClick={() => {
+                              setPEdit(p.id);
+                              setPEditForm({
+                                paper_name: p.paper_name,
+                                marks: String(p.marks),
+                                total: String(p.total),
+                                date: p.date || "",
+                              });
+                            }}
+                          >
+                            <Icon name="edit" size={14} />
+                          </button>
+                          <button className="icon-btn" title="Delete" onClick={() => doDeletePaper(p.id)}>
+                            <Icon name="trash" size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </>
