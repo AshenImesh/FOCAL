@@ -207,10 +207,10 @@ textarea.input{resize:vertical;min-height:100px;font-family:var(--font-b);font-s
 }
 .photo-frame{
   position:relative;display:flex;align-items:flex-end;justify-content:center;
-  padding:0 10px;margin:0 auto;
+  padding:0 10px;margin:0 auto 16px;
 }
 .photo-frame img{
-  position:relative;z-index:2;width:auto;max-width:100%;height:400px;object-fit:contain;
+  position:relative;z-index:2;width:auto;max-width:100%;height:440px;object-fit:contain;
   filter:
     drop-shadow(0 12px 16px rgba(16,19,29,.30))
     drop-shadow(0 28px 32px rgba(16,19,29,.22))
@@ -648,7 +648,8 @@ footer{border-top:1px solid var(--border);margin-top:72px;background:var(--surfa
   .class-grid{grid-template-columns:1fr}
   .hero-grid{grid-template-columns:1fr;gap:40px}
   .hero-visual{min-height:0}
-  .photo-frame img{height:340px}
+  .photo-frame img{height:370px}
+  .photo-frame{margin-bottom:12px}
   .hero{padding:48px 0 64px}
 }
 @media (max-width:640px){
@@ -661,7 +662,7 @@ footer{border-top:1px solid var(--border);margin-top:72px;background:var(--surfa
   .qcard{padding:22px 18px}
   .done-body,.done-actions{padding-left:18px;padding-right:18px}
   .sub-table{margin-left:16px}
-  .photo-frame img{height:300px}
+  .photo-frame img{height:320px}
   .hero-visual{min-height:0}
   .hv-chip.c1{left:-4px;top:40px}
   .hv-chip.c2{right:-4px;bottom:60px}
